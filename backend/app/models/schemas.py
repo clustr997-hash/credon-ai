@@ -34,6 +34,7 @@ class ChatResponse(BaseModel):
     suggestions: list[str] = []
     thinking: str = ""
     latency_ms: int
+    metadata: dict[str, object] = Field(default_factory=dict)
 
 
 class FeedbackRequest(BaseModel):
