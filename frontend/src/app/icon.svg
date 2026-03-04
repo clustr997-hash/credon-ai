@@ -1,0 +1,23 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="credonGradientIcon" x1="32" y1="28" x2="224" y2="228" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22D3EE"/>
+      <stop offset="0.55" stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#8B5CF6"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="14" y="14" width="228" height="228" rx="56" fill="#09090B"/>
+  <rect x="14" y="14" width="228" height="228" rx="56" stroke="url(#credonGradientIcon)" stroke-width="4"/>
+
+  <path d="M180 82C164 66 142 58 118 58C72 58 40 90 40 128C40 166 72 198 118 198C142 198 164 190 180 174"
+        stroke="url(#credonGradientIcon)" stroke-width="20" stroke-linecap="round"/>
+
+  <circle cx="186" cy="82" r="14" fill="#22D3EE"/>
+  <circle cx="198" cy="128" r="10" fill="#3B82F6"/>
+  <circle cx="186" cy="174" r="14" fill="#8B5CF6"/>
+
+  <path d="M72 128H138" stroke="#E4E4E7" stroke-opacity="0.95" stroke-width="10" stroke-linecap="round"/>
+  <path d="M138 128L160 106" stroke="#E4E4E7" stroke-opacity="0.95" stroke-width="10" stroke-linecap="round"/>
+  <path d="M138 128L160 150" stroke="#E4E4E7" stroke-opacity="0.95" stroke-width="10" stroke-linecap="round"/>
+</svg>

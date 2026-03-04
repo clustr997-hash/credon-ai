@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+pydantic
+python-dotenv
+langdetect
+duckduckgo-search
+ddgs
+trafilatura
+sentence-transformers
+chromadb
+firebase-admin
+requests
+python-multipart
+pypdf
+pypdfium2
+pillow
+pytesseract

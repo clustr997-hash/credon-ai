@@ -1,0 +1,13 @@
+{
+  "typeCheckingMode": "strict",
+  "include": [
+    "backend/app",
+    "backend/scripts"
+  ],
+  "exclude": [
+    "**/.venv",
+    "**/site-packages",
+    "backend/.venv",
+    "**/__pycache__"
+  ]
+}
