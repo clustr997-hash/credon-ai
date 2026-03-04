@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from typing import Literal, cast
 import re
 import json as _json
+import logging
 from app.models.schemas import (
     ChatMessage,
     ChatRequest,
@@ -43,6 +44,7 @@ from app.utils.language import detect_language
 from time import perf_counter
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _public_model() -> dict[str, str | bool]:
@@ -83,6 +85,66 @@ def _is_simple_query(query: str) -> bool:
     return False
 
 
+def _is_profile_recall_query(query: str) -> bool:
+    q = query.strip().lower()
+    patterns = [
+        r"who am i", r"what is my name", r"my name is",
+        r"remember my", r"you know me", r"what did i tell you about",
+    ]
+    return any(re.search(p, q) for p in patterns)
+
+
+def _is_arithmetic_query(query: str) -> bool:
+    q = query.strip().lower()
+    if re.search(r"\b(what is|calculate|compute|solve)\b", q):
+        q = re.sub(r"\b(what is|calculate|compute|solve|equals|=|\?)\b", " ", q)
+    return bool(re.fullmatch(r"[\d\s\+\-\*/\(\)\.]+", q.strip())) and any(
+        op in q for op in "+-*/"
+    )
+
+
+def _query_complexity_features(query: str) -> dict[str, float]:
+    words = query.split()
+    word_count = len(words)
+    length_score = min(word_count / 25.0, 1.0)
+    entities = re.findall(r"\b([A-Z][a-z]+|\d{4}|\d+%?)\b", query)
+    entity_score = min(len(entities) / 6.0, 1.0)
+    intent_markers = len(re.findall(r"\b(compare|analy[sz]e|why|how|explain|trade-?off|strategy)\b", query.lower()))
+    intent_score = min(intent_markers / 3.0, 1.0)
+    complexity = min(1.0, (length_score * 0.45) + (entity_score * 0.25) + (intent_score * 0.30))
+    return {
+        "word_count": float(word_count),
+        "length_score": length_score,
+        "entity_score": entity_score,
+        "intent_score": intent_score,
+        "complexity": complexity,
+    }
+
+
+def _retrieval_evidence_quality(sources: list[dict[str, str]]) -> dict[str, float]:
+    source_count = len(sources)
+    source_score = min(source_count / 4.0, 1.0)
+    snippet_lengths = [len((s.get("snippet") or s.get("content") or "").strip()) for s in sources]
+    snippet_quality = min((sum(min(length, 240) for length in snippet_lengths) / (max(len(snippet_lengths), 1) * 240.0)), 1.0)
+    evidence_score = (source_score * 0.6) + (snippet_quality * 0.4)
+    return {
+        "source_count": float(source_count),
+        "source_score": source_score,
+        "snippet_quality": snippet_quality,
+        "evidence_score": evidence_score,
+    }
+
+
+def _routing_intent(query: str) -> str:
+    if _is_greeting(query):
+        return "greeting"
+    if _is_arithmetic_query(query):
+        return "arithmetic"
+    if _is_profile_recall_query(query):
+        return "profile_recall"
+    return "general"
+
+
 def _is_math_query(query: str) -> bool:
     """Detect math/calculation queries for smart model routing."""
     q = query.lower()
@@ -114,9 +176,52 @@ def _web_result_budget(query: str) -> int:
 
 
 def _should_try_brain_first(query: str) -> bool:
-    if _is_simple_query(query) or _is_math_query(query):
-        return True
-    return len(query.strip().split()) <= 14
+    return _routing_intent(query) in {"greeting", "arithmetic", "profile_recall"}
+
+
+def _routing_score(
+    query: str,
+    sources: list[dict[str, str]],
+    has_model: bool,
+    use_web: bool,
+) -> tuple[float, str, dict[str, object]]:
+    intent = _routing_intent(query)
+    complexity = _query_complexity_features(query)
+    evidence = _retrieval_evidence_quality(sources)
+    latency_budget_score = 1.0 if len(query.split()) <= 8 else 0.7 if len(query.split()) <= 20 else 0.4
+    model_score = 1.0 if has_model else 0.35
+    deterministic_boost = 1.0 if intent in {"greeting", "arithmetic", "profile_recall"} else 0.0
+    score = (
+        (deterministic_boost * 0.42)
+        + ((1.0 - complexity["complexity"]) * 0.28)
+        + (evidence["evidence_score"] * 0.16)
+        + (latency_budget_score * 0.08)
+        + ((1.0 - model_score) * 0.06)
+    )
+    if use_web and intent == "general":
+        score -= 0.08
+    score = max(0.0, min(score, 1.0))
+    reason = "deterministic_intent_confident" if score >= 0.78 and deterministic_boost else "model_generation_required"
+    diagnostics: dict[str, object] = {
+        "intent": intent,
+        "complexity": complexity,
+        "evidence": evidence,
+        "model_available": has_model,
+        "latency_budget_score": latency_budget_score,
+        "score": round(score, 4),
+        "reason": reason,
+    }
+    return score, reason, diagnostics
+
+
+def _log_routing(route: str, reason: str, score: float, diagnostics: dict[str, object]) -> None:
+    logger.info(
+        "routing_decision route=%s reason=%s score=%.4f diagnostics=%s",
+        route,
+        reason,
+        score,
+        diagnostics,
+    )
 
 
 def _has_available_model() -> bool:
@@ -391,6 +496,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
             sources=[],
             images=[],
             latency_ms=elapsed,
+            metadata={"routing": {"selected_route": "attachment_guard", "reason": "missing_attachment_bytes", "score": 1.0}},
         )
 
     if followup_mode and reply_context:
@@ -411,6 +517,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
             sources=[],
             images=[],
             latency_ms=elapsed,
+            metadata={"routing": {"selected_route": "followup_generation", "reason": "contextual_followup", "score": 1.0}},
         )
 
     memory_answer = memory_based_answer(cleaned_query, transcript, target_language)
@@ -423,6 +530,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
             confidence="high",
             sources=[],
             latency_ms=elapsed,
+            metadata={"routing": {"selected_route": "memory_shortcut", "reason": "memory_match", "score": 1.0}},
         )
 
     # Personal profile questions should not trigger web search.
@@ -437,31 +545,24 @@ def chat(payload: ChatRequest) -> ChatResponse:
             sources=[],
             images=[],
             latency_ms=elapsed,
+            metadata={"routing": {"selected_route": "personal_fallback", "reason": "profile_query", "score": 1.0}},
         )
 
-    # Greeting short-circuit: ALWAYS use Brain for greetings, never web search
-    if _is_greeting(cleaned_query):
-        brain_answer = credon_answer(cleaned_query, target_language=target_language)
-        if brain_answer:
-            save_message(payload.user_id, payload.session_id, "assistant", brain_answer)
-            learn_from_conversation(cleaned_query, brain_answer, "high")
-            elapsed = int((perf_counter() - start) * 1000)
-            return ChatResponse(
-                answer=brain_answer,
-                language=target_language,
-                confidence="high",
-                sources=[],
-                images=[],
-                latency_ms=elapsed,
-            )
+    has_model = _has_available_model()
 
-    # Ultra-fast path: Credon Brain self-answer for simple/math/offline queries
-    quick_route = (_should_try_brain_first(cleaned_query) and not payload.use_web) or not payload.use_web
+    quick_knowledge = retrieve_knowledge_context(payload.user_id, cleaned_query, top_k=3)
+    quick_score, quick_reason, quick_diagnostics = _routing_score(
+        cleaned_query,
+        quick_knowledge,
+        has_model=has_model,
+        use_web=payload.use_web,
+    )
+    quick_route = _should_try_brain_first(cleaned_query) and quick_score >= 0.78
+
     if quick_route:
-        quick_knowledge = retrieve_knowledge_context(payload.user_id, cleaned_query, top_k=3)
+        _log_routing("credon_answer", quick_reason, quick_score, quick_diagnostics)
         brain_answer = credon_answer(cleaned_query, sources=quick_knowledge or None, target_language=target_language)
         if brain_answer:
-            thinking = credon_think(cleaned_query, sources=quick_knowledge or None)
             answer = _clean_answer(brain_answer)
             save_message(payload.user_id, payload.session_id, "assistant", answer)
             learn_from_conversation(cleaned_query, answer, "high")
@@ -473,32 +574,12 @@ def chat(payload: ChatRequest) -> ChatResponse:
                 sources=[Source(title=item["title"], url=item["url"]) for item in quick_knowledge],
                 images=[],
                 latency_ms=elapsed,
+                metadata={"routing": {"selected_route": "credon_answer", **quick_diagnostics}},
             )
-        # If Brain does not have a direct answer, use fast web retrieval + Brain synthesis
-        if payload.use_web:
-            quick_results = retrieve_sources(cleaned_query, max_results=min(10, _web_result_budget(cleaned_query)))
-            web_brain_answer = credon_answer(
-                cleaned_query,
-                sources=quick_results or None,
-                target_language=target_language,
-            )
-            if web_brain_answer:
-                confidence = "high" if len(quick_results) >= 3 else "medium" if quick_results else "low"
-                answer = _clean_answer(web_brain_answer)
-                save_message(payload.user_id, payload.session_id, "assistant", answer)
-                learn_from_conversation(cleaned_query, answer, confidence)
-                elapsed = int((perf_counter() - start) * 1000)
-                return ChatResponse(
-                    answer=answer,
-                    language=target_language,
-                    confidence=confidence,
-                    sources=[Source(title=item["title"], url=item["url"]) for item in quick_results],
-                    images=[],
-                    latency_ms=elapsed,
-                )
+
+    _log_routing("model_generation", quick_reason, quick_score, quick_diagnostics)
 
     use_web = payload.use_web and not is_personal_query(cleaned_query) and not followup_mode
-    has_model = _has_available_model()
     chosen_model = payload.model or _choose_internal_model(cleaned_query, use_web)
 
     knowledge_results = retrieve_knowledge_context(payload.user_id, cleaned_query, top_k=4)
@@ -526,6 +607,13 @@ def chat(payload: ChatRequest) -> ChatResponse:
                 sources=[Source(title=item["title"], url=item["url"]) for item in results],
                 images=[],
                 latency_ms=elapsed,
+                metadata={
+                    "routing": {
+                        "selected_route": "credon_answer_fallback",
+                        "score": round(quick_score, 4),
+                        "reason": "model_unavailable",
+                    }
+                },
             )
 
     # Thinking step
@@ -567,6 +655,13 @@ def chat(payload: ChatRequest) -> ChatResponse:
         suggestions=suggestions,
         thinking=thinking,
         latency_ms=elapsed,
+        metadata={
+            "routing": {
+                "selected_route": "model_generation",
+                "score": round(quick_score, 4),
+                "reason": quick_reason,
+            }
+        },
     )
 
 
@@ -610,7 +705,7 @@ def chat_stream(payload: ChatRequest):
 
         def _attachment_events():
             yield f"data: {_json.dumps({'type': 'token', 'content': attachment_message})}\n\n"
-            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed})}\n\n"
+            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed, 'metadata': {'routing': {'selected_route': 'attachment_guard_stream', 'reason': 'missing_attachment_bytes', 'score': 1.0}}})}\n\n"
 
         return StreamingResponse(_attachment_events(), media_type="text/event-stream")
 
@@ -629,7 +724,7 @@ def chat_stream(payload: ChatRequest):
 
         def _followup_events():
             yield f"data: {_json.dumps({'type': 'token', 'content': answer_text})}\n\n"
-            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed})}\n\n"
+            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed, 'metadata': {'routing': {'selected_route': 'followup_generation_stream', 'reason': 'contextual_followup', 'score': 1.0}}})}\n\n"
 
         return StreamingResponse(_followup_events(), media_type="text/event-stream")
 
@@ -641,7 +736,7 @@ def chat_stream(payload: ChatRequest):
 
         def _mem_events():
             yield f"data: {_json.dumps({'type': 'token', 'content': memory_answer})}\n\n"
-            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed})}\n\n"
+            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed, 'metadata': {'routing': {'selected_route': 'memory_shortcut_stream', 'reason': 'memory_match', 'score': 1.0}}})}\n\n"
 
         return StreamingResponse(_mem_events(), media_type="text/event-stream")
 
@@ -652,28 +747,22 @@ def chat_stream(payload: ChatRequest):
 
         def _personal_events():
             yield f"data: {_json.dumps({'type': 'token', 'content': personal_fallback})}\n\n"
-            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed})}\n\n"
+            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed, 'metadata': {'routing': {'selected_route': 'personal_fallback_stream', 'reason': 'profile_query', 'score': 1.0}}})}\n\n"
 
         return StreamingResponse(_personal_events(), media_type="text/event-stream")
 
-    # Greeting short-circuit: ALWAYS use Brain for greetings, never web search
-    if _is_greeting(cleaned_query):
-        brain_answer = credon_answer(cleaned_query, target_language=target_language)
-        if brain_answer:
-            save_message(payload.user_id, payload.session_id, "assistant", brain_answer)
-            learn_from_conversation(cleaned_query, brain_answer, "high")
-            elapsed = int((perf_counter() - start) * 1000)
+    has_model = _has_available_model()
 
-            def _greeting_events():
-                yield f"data: {_json.dumps({'type': 'token', 'content': brain_answer})}\n\n"
-                yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed})}\n\n"
-
-            return StreamingResponse(_greeting_events(), media_type="text/event-stream")
-
-    # Ultra-fast streaming path: Credon Brain self-answer for simple/math/offline queries
-    quick_route = (_should_try_brain_first(cleaned_query) and not payload.use_web) or not payload.use_web
+    quick_knowledge = retrieve_knowledge_context(payload.user_id, cleaned_query, top_k=3)
+    quick_score, quick_reason, quick_diagnostics = _routing_score(
+        cleaned_query,
+        quick_knowledge,
+        has_model=has_model,
+        use_web=payload.use_web,
+    )
+    quick_route = _should_try_brain_first(cleaned_query) and quick_score >= 0.78
     if quick_route:
-        quick_knowledge = retrieve_knowledge_context(payload.user_id, cleaned_query, top_k=3)
+        _log_routing("credon_answer_stream", quick_reason, quick_score, quick_diagnostics)
         brain_answer = credon_answer(cleaned_query, sources=quick_knowledge or None, target_language=target_language)
         if brain_answer:
             thinking = credon_think(cleaned_query, sources=quick_knowledge or None)
@@ -690,37 +779,12 @@ def chat_stream(payload: ChatRequest):
                 if source_payload:
                     yield f"data: {_json.dumps({'type': 'sources', 'sources': source_payload, 'confidence': 'high', 'images': []})}\n\n"
                 yield f"data: {_json.dumps({'type': 'token', 'content': answer_text})}\n\n"
-                yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': source_payload, 'images': [], 'latency_ms': elapsed})}\n\n"
+                yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': source_payload, 'images': [], 'latency_ms': elapsed, 'metadata': {'routing': {'selected_route': 'credon_answer_stream', **quick_diagnostics}}})}\n\n"
 
             return StreamingResponse(_brain_events(), media_type="text/event-stream")
-
-        if payload.use_web:
-            quick_results = retrieve_sources(cleaned_query, max_results=min(10, _web_result_budget(cleaned_query)))
-            web_brain_answer = credon_answer(
-                cleaned_query,
-                sources=quick_results or None,
-                target_language=target_language,
-            )
-            if web_brain_answer:
-                confidence = "high" if len(quick_results) >= 3 else "medium" if quick_results else "low"
-                thinking = credon_think(cleaned_query, sources=quick_results or None)
-                answer_text = _clean_answer(web_brain_answer)
-                save_message(payload.user_id, payload.session_id, "assistant", answer_text)
-                learn_from_conversation(cleaned_query, answer_text, confidence)
-                elapsed = int((perf_counter() - start) * 1000)
-
-                def _brain_web_events():
-                    yield f"data: {_json.dumps({'type': 'status', 'stage': 'searching', 'message': 'Searching knowledge sources...'})}\n\n"
-                    if thinking:
-                        yield f"data: {_json.dumps({'type': 'thinking', 'content': thinking})}\n\n"
-                    yield f"data: {_json.dumps({'type': 'sources', 'sources': [{'title': s['title'], 'url': s['url']} for s in quick_results], 'confidence': confidence, 'images': []})}\n\n"
-                    yield f"data: {_json.dumps({'type': 'token', 'content': answer_text})}\n\n"
-                    yield f"data: {_json.dumps({'type': 'done', 'confidence': confidence, 'sources': [{'title': s['title'], 'url': s['url']} for s in quick_results], 'images': [], 'latency_ms': elapsed})}\n\n"
-
-                return StreamingResponse(_brain_web_events(), media_type="text/event-stream")
+    _log_routing("model_generation_stream", quick_reason, quick_score, quick_diagnostics)
 
     use_web = payload.use_web and not is_personal_query(cleaned_query) and not followup_mode
-    has_model = _has_available_model()
     chosen_model = payload.model or _choose_internal_model(cleaned_query, use_web)
 
     # Full pipeline with thinking stages
@@ -757,7 +821,7 @@ def chat_stream(payload: ChatRequest):
                     yield f"data: {_json.dumps({'type': 'thinking', 'content': thinking})}\n\n"
                 yield f"data: {_json.dumps({'type': 'sources', 'sources': sources_payload, 'confidence': confidence, 'images': []})}\n\n"
                 yield f"data: {_json.dumps({'type': 'token', 'content': answer_text})}\n\n"
-                yield f"data: {_json.dumps({'type': 'done', 'latency_ms': elapsed, 'suggestions': suggestions})}\n\n"
+                yield f"data: {_json.dumps({'type': 'done', 'latency_ms': elapsed, 'suggestions': suggestions, 'metadata': {'routing': {'selected_route': 'credon_answer_fallback_stream', 'score': round(quick_score, 4), 'reason': 'model_unavailable'}}})}\n\n"
                 return
 
         # Stage 2: Thinking / Evaluating — stream word by word
@@ -806,7 +870,7 @@ def chat_stream(payload: ChatRequest):
         save_message(payload.user_id, payload.session_id, "assistant", answer_text)
         learn_from_conversation(cleaned_query, answer_text, adj_confidence)
         elapsed = int((perf_counter() - start) * 1000)
-        yield f"data: {_json.dumps({'type': 'done', 'latency_ms': elapsed, 'confidence': adj_confidence, 'suggestions': suggestions})}\n\n"
+        yield f"data: {_json.dumps({'type': 'done', 'latency_ms': elapsed, 'confidence': adj_confidence, 'suggestions': suggestions, 'metadata': {'routing': {'selected_route': 'model_generation_stream', 'score': round(quick_score, 4), 'reason': quick_reason}}})}\n\n"
 
     return StreamingResponse(_stream_events(), media_type="text/event-stream")
 
