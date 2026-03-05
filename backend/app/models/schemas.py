@@ -10,6 +10,7 @@ class ChatRequest(BaseModel):
     model: str | None = None  # optional model override
     use_web: bool = True
     deep_think: bool = True
+    code_mode: bool = False
     regenerate_of: int | None = None
     reply_to: str | None = None
 
@@ -43,6 +44,8 @@ class FeedbackRequest(BaseModel):
     session_id: str = Field(min_length=1)
     message_text: str = Field(min_length=1)
     vote: Literal["up", "down"]
+    reason: str | None = None
+    category: Literal["irrelevant", "incorrect", "too_slow", "too_long", "other"] | None = None
 
 
 class ChatMessage(BaseModel):

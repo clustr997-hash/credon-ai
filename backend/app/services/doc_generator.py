@@ -58,7 +58,7 @@ def generate_notes_pdf(
     except ImportError:
         raise RuntimeError("fpdf2 package not installed. Run: pip install fpdf2")
 
-    pdf = FPDF()
+    pdf: Any = FPDF()
     pdf.set_auto_page_break(auto=True, margin=20)
     pdf.add_page()
 
@@ -134,7 +134,7 @@ def generate_cheat_sheet_pdf(
     except ImportError:
         raise RuntimeError("fpdf2 package not installed. Run: pip install fpdf2")
 
-    pdf = FPDF()
+    pdf: Any = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
@@ -185,7 +185,7 @@ def generate_pyq_pdf(
     except ImportError:
         raise RuntimeError("fpdf2 package not installed. Run: pip install fpdf2")
 
-    pdf = FPDF()
+    pdf: Any = FPDF()
     pdf.set_auto_page_break(auto=True, margin=20)
     pdf.add_page()
 

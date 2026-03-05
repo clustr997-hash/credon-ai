@@ -10,6 +10,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from app.services.generation_v2 import generate_grounded_answer
 from app.services.retrieval_v2 import retrieve_sources
@@ -19,8 +20,25 @@ from app.services.doc_generator import (
     generate_cheat_sheet_pdf,
     generate_pyq_pdf,
 )
+from app.services.chat_store import get_transcript, list_sessions
 
 router = APIRouter()
+
+
+class AnswerPdfRequest(BaseModel):
+    title: str
+    content: str
+    subject: str = ""
+    user_id: str = "anonymous"
+
+
+class ChatPdfRequest(BaseModel):
+    user_id: str
+    session_id: str
+
+
+class AllChatsPdfRequest(BaseModel):
+    user_id: str
 
 
 @router.get("/generate/notes")
@@ -303,4 +321,91 @@ async def export_pyq_pdf(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="pyq-{safe_name}.pdf"'},
+    )
+
+
+@router.post("/generate/export/answer-pdf")
+async def export_answer_pdf(body: AnswerPdfRequest):
+    """Export any answer text as a polished notes-style PDF."""
+    title = body.title.strip() or "Credon Answer"
+    content = body.content.strip()
+    if not content:
+        content = "No content provided."
+
+    metadata = {
+        "generated": datetime.now().strftime("%B %d, %Y"),
+        "source": "Credon AI chat",
+    }
+    pdf_bytes = generate_notes_pdf(
+        title=title,
+        content=content,
+        subject=body.subject,
+        metadata=metadata,
+    )
+
+    safe_name = title[:40].replace(" ", "-").replace("/", "-")
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="answer-{safe_name}.pdf"'},
+    )
+
+
+@router.post("/generate/export/chat-pdf")
+async def export_chat_pdf(body: ChatPdfRequest):
+    """Export a full chat session transcript as one PDF."""
+    transcript = get_transcript(body.user_id, body.session_id)
+    lines: list[str] = []
+    for item in transcript:
+        role = str(item.get("role", "assistant")).upper()
+        text = str(item.get("text", "")).strip()
+        if not text:
+            continue
+        lines.append(f"{role}:\n{text}\n")
+    content = "\n".join(lines) if lines else "No chat messages available in this session."
+
+    pdf_bytes = generate_notes_pdf(
+        title=f"Credon Chat - {body.session_id}",
+        content=content,
+        subject="chat transcript",
+        metadata={"generated": datetime.now().strftime("%B %d, %Y")},
+    )
+    safe_name = body.session_id[:40].replace(" ", "-").replace("/", "-")
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="chat-{safe_name}.pdf"'},
+    )
+
+
+@router.post("/generate/export/all-chats-pdf")
+async def export_all_chats_pdf(body: AllChatsPdfRequest):
+    """Export all chats for a user into one consolidated PDF."""
+    sessions = list_sessions(body.user_id)
+    blocks: list[str] = []
+    for session in sessions[:40]:
+        session_id = str(session.get("session_id", ""))
+        transcript = get_transcript(body.user_id, session_id)
+        if not transcript:
+            continue
+        blocks.append(f"## Session: {session_id}")
+        for item in transcript:
+            role = str(item.get("role", "assistant")).upper()
+            text = str(item.get("text", "")).strip()
+            if text:
+                blocks.append(f"{role}: {text}")
+        blocks.append("")
+
+    content = "\n".join(blocks) if blocks else "No chat messages available."
+    pdf_bytes = generate_notes_pdf(
+        title="Credon AI - All Chats",
+        content=content,
+        subject="chat archive",
+        metadata={"generated": datetime.now().strftime("%B %d, %Y")},
+    )
+
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="credon-all-chats.pdf"'},
     )

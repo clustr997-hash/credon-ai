@@ -7,13 +7,6 @@
   --accent-blue: #3b82f6;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #09090b;
@@ -27,8 +20,6 @@ html {
   -webkit-tap-highlight-color: transparent;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
 }
 
 body {
@@ -45,10 +36,6 @@ body {
 }
 
 /* ─── Scrollbar styling ─── */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(113, 113, 122, 0.3) transparent;
-}
 *::-webkit-scrollbar { width: 6px; height: 6px; }
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb { background: rgba(113, 113, 122, 0.3); border-radius: 3px; }
@@ -204,4 +191,20 @@ pre code {
 }
 .sidebar-item:hover {
   transform: translateX(2px);
+}
+
+@keyframes trinity-glow {
+  0% {
+    box-shadow: 0 0 0 rgba(34, 211, 238, 0), inset 0 0 0 rgba(34, 211, 238, 0);
+  }
+  50% {
+    box-shadow: 0 0 18px rgba(34, 211, 238, 0.18), inset 0 0 14px rgba(59, 130, 246, 0.12);
+  }
+  100% {
+    box-shadow: 0 0 0 rgba(34, 211, 238, 0), inset 0 0 0 rgba(34, 211, 238, 0);
+  }
+}
+
+.trinity-glow {
+  animation: trinity-glow 2.2s ease-in-out infinite;
 }

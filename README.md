@@ -174,6 +174,59 @@ npm run dev
 - If OCR cannot extract text, API returns explicit error.
 - Attachment UI currently sends markers in chat; true binary ingestion should call `/ingest/pdf` or `/ingest/image` directly.
 
+## 11) FCM Setup (Step-by-Step)
+
+FCM is optional. Credon runs without it.
+
+1. Open Firebase Console -> Project Settings -> Cloud Messaging.
+2. Enable Cloud Messaging API (if prompted).
+3. Create a Web Push certificate key (VAPID) and copy it.
+4. In frontend env (`frontend/.env.local`) add:
+```bash
+NEXT_PUBLIC_FIREBASE_API_KEY=...
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=...
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=...
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=...
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=...
+NEXT_PUBLIC_FIREBASE_APP_ID=...
+NEXT_PUBLIC_FIREBASE_VAPID_KEY=YOUR_VAPID_KEY
+NEXT_PUBLIC_API_BASE=http://127.0.0.1:8000
+```
+5. Run frontend and open Settings -> Push Notifications (FCM) -> Enable.
+6. Credon generates a browser token. Save token on backend if you want targeted push notifications later.
+
+## 12) Autonomous Trainer Bot (Safe Mode)
+
+Use `backend/scripts/autonomous_feedback_bot.py` with strict limits.
+
+Example:
+```bash
+backend/.venv/Scripts/python.exe backend/scripts/autonomous_feedback_bot.py --base-url http://127.0.0.1:8000 --user-id trainer-bot --loops 6 --daily-cap 40 --hourly-cap 10 --max-downvotes-per-run 2 --sleep-sec 2
+```
+
+Safety behavior:
+- Uses dedicated user id (`trainer-bot`) so it does not interfere with real user sessions.
+- Enforces daily + hourly caps to protect Firebase/API quotas.
+- Limits downvotes per run to avoid noisy negative training.
+- Stores run state in `backend/data/autonomous_feedback_bot_state.json`.
+
+## 13) GitHub -> Firebase Auto Deploy
+
+Workflow file already exists: `.github/workflows/firebase-hosting-deploy.yml`.
+
+Required one-time setup:
+1. Push repository to GitHub and make sure default branch is `main`.
+2. In GitHub -> Settings -> Secrets and variables -> Actions, add secret:
+  - `FIREBASE_SERVICE_ACCOUNT_CREDONAI` (service account JSON for Hosting deploy).
+3. Verify `firebase.json` and `.firebaserc` point to your Firebase project.
+4. Push any change in `frontend/**` to `main`.
+
+What auto-updates:
+- Firebase Hosting frontend deploy.
+
+What does not auto-update from this workflow:
+- FastAPI backend runtime (deploy backend separately on your backend host).
+
 ---
 
 If you want, next step I can implement frontend upload integration to call these ingest APIs directly before chat so image/PDF context is automatically available in the same conversation.

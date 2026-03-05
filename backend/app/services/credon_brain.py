@@ -265,6 +265,17 @@ GREETING_RESPONSES = {
 # ── Self-Learning Store ──────────────────────────────────────────
 
 _learned_qa: list[dict[str, Any]] = []
+_feedback_memory: dict[str, dict[str, Any]] = {}
+
+
+def _normalize_question(text: str) -> str:
+    normalized = re.sub(r"\s+", " ", text.strip().lower())
+    return re.sub(r"[^a-z0-9\s_\-\+\#]", "", normalized)
+
+
+def _answer_signature(answer: str) -> str:
+    compact = re.sub(r"\s+", " ", answer.strip().lower())
+    return compact[:220]
 
 
 def _looks_math_query(text: str) -> bool:
@@ -295,6 +306,18 @@ def _load_learned() -> None:
             _learned_qa = []
 
 
+def _load_feedback() -> None:
+    global _feedback_memory
+    if _FEEDBACK_FILE.exists():
+        try:
+            data = json.loads(_FEEDBACK_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                _feedback_memory = cast(dict[str, dict[str, Any]], data)
+        except Exception as e:
+            print(f"[Credon Brain] Failed to load feedback memory: {e}")
+            _feedback_memory = {}
+
+
 def _save_learned() -> None:
     """Persist learned Q&A pairs to disk."""
     with _LOCK:
@@ -305,6 +328,81 @@ def _save_learned() -> None:
             encoding="utf-8",
         )
         temp.replace(_LEARNED_FILE)
+
+
+def _save_feedback() -> None:
+    with _LOCK:
+        _DATA_DIR.mkdir(parents=True, exist_ok=True)
+        temp = _FEEDBACK_FILE.with_suffix(".tmp")
+        temp.write_text(
+            json.dumps(_feedback_memory, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        temp.replace(_FEEDBACK_FILE)
+
+
+def register_feedback(
+    question: str,
+    answer: str,
+    vote: str,
+    category: str | None = None,
+    reason: str | None = None,
+) -> None:
+    q = _normalize_question(question)
+    if not q or not answer.strip():
+        return
+
+    ans_sig = _answer_signature(answer)
+    with _LOCK:
+        bucket = _feedback_memory.setdefault(
+            q,
+            {
+                "upvotes": 0,
+                "downvotes": 0,
+                "blocked_answers": [],
+                "events": [],
+            },
+        )
+        if vote == "up":
+            bucket["upvotes"] = int(bucket.get("upvotes", 0)) + 1
+            blocked = cast(list[str], bucket.get("blocked_answers", []))
+            if ans_sig in blocked:
+                blocked.remove(ans_sig)
+                bucket["blocked_answers"] = blocked
+        elif vote == "down":
+            bucket["downvotes"] = int(bucket.get("downvotes", 0)) + 1
+            blocked = cast(list[str], bucket.get("blocked_answers", []))
+            if ans_sig not in blocked:
+                blocked.append(ans_sig)
+            bucket["blocked_answers"] = blocked[-30:]
+
+        events = cast(list[dict[str, str]], bucket.get("events", []))
+        events.append(
+            {
+                "at": datetime.now(timezone.utc).isoformat(),
+                "vote": vote,
+                "category": category or "",
+                "reason": (reason or "")[:300],
+            }
+        )
+        bucket["events"] = events[-80:]
+
+        for existing in _learned_qa:
+            if _normalize_question(str(existing.get("question", ""))) != q:
+                continue
+            if _answer_signature(str(existing.get("answer", ""))) != ans_sig:
+                continue
+            if vote == "up":
+                existing["upvotes"] = int(existing.get("upvotes", 0)) + 1
+                existing["confidence"] = "high"
+                existing["quality_score"] = int(existing.get("quality_score", 0)) + 2
+            elif vote == "down":
+                existing["downvotes"] = int(existing.get("downvotes", 0)) + 1
+                existing["quality_score"] = int(existing.get("quality_score", 0)) - 3
+                existing["confidence"] = "low"
+
+        _save_feedback()
+        _save_learned()
 
 
 def learn_from_conversation(question: str, answer: str, confidence: str = "medium") -> None:
@@ -368,6 +466,9 @@ def learn_from_conversation(question: str, answer: str, confidence: str = "mediu
         "question": q,
         "answer": answer.strip(),
         "confidence": confidence,
+        "quality_score": 1,
+        "upvotes": 0,
+        "downvotes": 0,
         "learned_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -379,6 +480,7 @@ def learn_from_conversation(question: str, answer: str, confidence: str = "mediu
                 existing["answer"] = entry["answer"]
                 existing["confidence"] = entry["confidence"]
                 existing["learned_at"] = entry["learned_at"]
+                existing["quality_score"] = int(existing.get("quality_score", 0)) + 1
                 _save_learned()
                 return
         _learned_qa.append(entry)
@@ -418,7 +520,18 @@ def find_learned_answer(query: str) -> dict[str, str] | None:
         e_terms = _key_terms(entry["question"])
         if q_terms and e_terms and len(q_terms & e_terms) < 2:
             continue
+        q_key = _normalize_question(str(entry.get("question", "")))
+        feedback = _feedback_memory.get(q_key, {})
+        blocked_answers = cast(list[str], feedback.get("blocked_answers", []))
+        if _answer_signature(str(entry.get("answer", ""))) in blocked_answers:
+            continue
+
         score = _similarity(q, entry["question"])
+        quality_score = int(entry.get("quality_score", 0))
+        score += min(max(quality_score * 0.02, -0.12), 0.12)
+        upvotes = int(entry.get("upvotes", 0))
+        downvotes = int(entry.get("downvotes", 0))
+        score += min((upvotes - downvotes) * 0.01, 0.08)
         if score > best_score:
             best_score = score
             best_match = entry
@@ -685,4 +798,5 @@ def _answer_from_sources_improved(
 # ── Initialize on import ─────────────────────────────────────────
 
 _load_learned()
+_load_feedback()
 print(f"[Credon Brain] Initialized with {len(KNOWLEDGE_BASE)} knowledge entries + {len(_learned_qa)} learned pairs")

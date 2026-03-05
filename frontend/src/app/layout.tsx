@@ -24,10 +24,16 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: "Credon AI",
   description: "Creative retrieval-first AI assistant in English and Hinglish",
+  manifest: "/manifest.webmanifest",
   icons: {
     icon: "/credon-logo.svg",
     shortcut: "/credon-logo.svg",
     apple: "/credon-logo.svg",
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "CREDON-AI",
   },
 };
 

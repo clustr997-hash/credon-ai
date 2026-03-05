@@ -33,6 +33,7 @@ from app.services.credon_brain import (
     credon_answer,
     credon_think,
     learn_from_conversation,
+    register_feedback,
 )
 from app.services.knowledge_store import retrieve_knowledge_context
 from app.services.answer_validator import (
@@ -281,7 +282,61 @@ def _is_math_query(query: str) -> bool:
     return any(re.search(p, q) for p in math_indicators)
 
 
-def _web_result_budget(query: str) -> int:
+def _is_programming_query(query: str) -> bool:
+    q = query.lower()
+    patterns = [
+        r"\b(code|program|script|function|class|algorithm|debug|bug|refactor)\b",
+        r"\b(python|javascript|typescript|java|c\+\+|c#|go|rust|php|ruby|swift|kotlin|sql|html|css)\b",
+        r"\b(api|endpoint|json|regex|database|query|docker|kubernetes|fastapi|next\.js|react|node)\b",
+        r"```",
+    ]
+    return any(re.search(pattern, q) for pattern in patterns)
+
+
+def _detect_requested_code_language(query: str) -> str | None:
+    q = query.lower()
+    language_patterns: list[tuple[str, list[str]]] = [
+        ("c++", [r"\bc\+\+\b", r"\bcpp\b"]),
+        ("c", [r"\bc language\b", r"\bc code\b", r"\bin c\b", r"\bc\b"]),
+        ("python", [r"\bpython\b", r"\bpy\b"]),
+        ("javascript", [r"\bjavascript\b", r"\bjs\b"]),
+        ("typescript", [r"\btypescript\b", r"\bts\b"]),
+        ("java", [r"\bjava\b"]),
+        ("go", [r"\bgolang\b", r"\bgo\b"]),
+        ("rust", [r"\brust\b"]),
+        ("php", [r"\bphp\b"]),
+        ("sql", [r"\bsql\b"]),
+    ]
+    for language, patterns in language_patterns:
+        for pattern in patterns:
+            if re.search(pattern, q):
+                return language
+    return None
+
+
+def _code_enhanced_query(query: str, code_mode_requested: bool) -> tuple[str, bool]:
+    code_mode_active = code_mode_requested or _is_programming_query(query)
+    if not code_mode_active:
+        return query, False
+    requested_language = _detect_requested_code_language(query)
+    language_rule = (
+        f"Use ONLY {requested_language} for code examples unless the user explicitly asks for another language. "
+        if requested_language
+        else "If user asks for a specific language, use only that language and avoid switching to other languages. "
+    )
+    code_instruction = (
+        "You are in CODE MODE. Return practical, runnable code. "
+        "Use proper fenced code blocks with language tags. "
+        "Keep explanation concise and include steps to run/test. "
+        "If there are multiple approaches, pick one best default first. "
+        f"{language_rule}"
+        "If user shares broken code, first explain the issue, then provide corrected code. "
+        "If user asks in Hinglish or asks for Hinglish, explain in Hinglish while keeping code syntax standard."
+    )
+    return f"{query}\n\n[{code_instruction}]", True
+
+
+def _web_result_budget(query: str, *, deep_think: bool = True) -> int:
     q = query.lower().strip()
     explicit = re.search(r"\btop\s+(\d{1,2})\b", q)
     if explicit:
@@ -290,10 +345,15 @@ def _web_result_budget(query: str) -> int:
 
     words = len(q.split())
     if words >= 30:
-        return 25
-    if words >= 18:
-        return 15
-    return 10
+        base = 25
+    elif words >= 18:
+        base = 15
+    else:
+        base = 10
+
+    if not deep_think:
+        return max(4, min(base, 8))
+    return base
 
 
 def _should_try_brain_first(query: str) -> bool:
@@ -543,6 +603,66 @@ def _is_ambiguous_short_followup(query: str) -> bool:
     return q in {"explain", "simplify", "why", "how", "details", "more", "elaborate"}
 
 
+def _is_reference_followup(query: str) -> bool:
+    """Detect short deictic follow-ups that usually refer to previous context."""
+    q = query.strip().lower()
+    if not q:
+        return False
+    patterns = [
+        r"\b(this|that|it|these|those|above|previous|earlier)\b",
+        r"\b(explain|summarize|simplify|short|brief|details)\s+(this|that|it)\b",
+        r"\babout\s+(this|that|it)\b",
+        r"\b(in|from)\s+(this|that)\s+(pdf|file|image|doc|document)\b",
+    ]
+    if any(re.search(p, q) for p in patterns):
+        return True
+    return len(q.split()) <= 7 and q in {
+        "explain this",
+        "summarize this",
+        "what about this",
+        "what about that",
+        "from this pdf",
+        "from this image",
+    }
+
+
+def _is_pdf_reference_query(query: str) -> bool:
+    q = query.strip().lower()
+    patterns = [
+        r"\b(this|that|my|the)\s+pdf\b",
+        r"\b(pdf|document|file)\s*(uploaded|upload|above|shared)\b",
+        r"\btell\s+me\s+about\s+this\s+pdf\b",
+        r"\bsummarize\s+(this|the)\s+pdf\b",
+    ]
+    return any(re.search(pattern, q) for pattern in patterns)
+
+
+def _latest_non_user_context(transcript: list[dict[str, Any]], current_query: str) -> str:
+    """Get latest useful context from transcript excluding current user echo."""
+    normalized_current = current_query.strip().lower()
+    for item in reversed(transcript):
+        role = str(item.get("role", "")).lower()
+        text = str(item.get("text", "")).strip()
+        if not text:
+            continue
+        if role == "assistant":
+            return text
+        if role == "user" and text.lower() != normalized_current:
+            return text
+    return ""
+
+
+def _contextual_query(query: str, transcript: list[dict[str, Any]]) -> str:
+    """Augment ambiguous follow-ups with nearby transcript context for retrieval/generation."""
+    if not _is_reference_followup(query):
+        return query
+    context = _latest_non_user_context(transcript, query)
+    if not context:
+        return query
+    compact = context.replace("\n", " ").strip()[:700]
+    return f"{query}\n\nContext from previous chat: {compact}"
+
+
 def _is_numbered_followup(query: str) -> tuple[bool, int]:
     """Detect numbered follow-up selection like '1', '2', 'first', 'second', 'yes'."""
     q = query.strip().lower()
@@ -678,8 +798,14 @@ def chat(payload: ChatRequest) -> ChatResponse:
 
     save_message(payload.user_id, payload.session_id, "user", cleaned_query)
     transcript = get_transcript(payload.user_id, payload.session_id)
+    working_query = _contextual_query(cleaned_query, transcript)
+    working_query, code_mode_active = _code_enhanced_query(working_query, payload.code_mode)
 
-    followup_mode = _is_contextual_followup(cleaned_query) or _is_ambiguous_short_followup(cleaned_query)
+    followup_mode = (
+        _is_contextual_followup(cleaned_query)
+        or _is_ambiguous_short_followup(cleaned_query)
+        or _is_reference_followup(cleaned_query)
+    )
     if followup_mode and not reply_context:
         reply_context = _latest_assistant_context(transcript)
 
@@ -711,7 +837,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
             metadata={"routing": {"selected_route": "attachment_guard", "reason": "missing_attachment_bytes", "score": 1.0}},
         )
 
-    if followup_mode and reply_context:
+    if followup_mode and reply_context and not _is_pdf_reference_query(cleaned_query):
         chosen_model = payload.model or _choose_internal_model(cleaned_query, False)
         followup_answer = generate_followup_from_context(
             cleaned_query,
@@ -799,7 +925,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
         fast_answer = credon_answer(cleaned_query, sources=None, target_language=target_language)
         if not fast_answer:
             fast_answer = generate_grounded_answer(
-                cleaned_query,
+                working_query,
                 [],
                 target_language,
                 model=chosen_model,
@@ -825,11 +951,11 @@ def chat(payload: ChatRequest) -> ChatResponse:
 
     has_model = _has_available_model()
 
-    quick_knowledge = retrieve_knowledge_context(payload.user_id, cleaned_query, top_k=3) if not _is_greeting(cleaned_query) else []
+    quick_knowledge = retrieve_knowledge_context(payload.user_id, working_query, top_k=3) if not _is_greeting(cleaned_query) else []
     if quick_knowledge:
         quick_knowledge, _ = _evaluate_sources(cleaned_query, quick_knowledge, keep=3)
     quick_score, quick_reason, quick_diagnostics = _routing_score(
-        cleaned_query,
+        working_query,
         quick_knowledge,
         has_model=has_model,
         use_web=payload.use_web,
@@ -838,7 +964,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
 
     if quick_route:
         _log_routing("credon_answer", quick_reason, quick_score, quick_diagnostics)
-        brain_answer = credon_answer(cleaned_query, sources=quick_knowledge or None, target_language=target_language)
+        brain_answer = credon_answer(working_query, sources=quick_knowledge or None, target_language=target_language)
         if brain_answer:
             answer = _clean_answer(brain_answer)
             save_message(payload.user_id, payload.session_id, "assistant", answer)
@@ -857,11 +983,22 @@ def chat(payload: ChatRequest) -> ChatResponse:
     _log_routing("model_generation", quick_reason, quick_score, quick_diagnostics)
 
     retrieval_allowed = not _is_greeting(cleaned_query)
-    use_web = payload.use_web and retrieval_allowed and not is_personal_query(cleaned_query) and not followup_mode
+    master_mode_active = payload.use_web and payload.deep_think and code_mode_active
+    use_web = (
+        payload.use_web
+        and retrieval_allowed
+        and not is_personal_query(cleaned_query)
+        and not followup_mode
+        and not _is_pdf_reference_query(cleaned_query)
+        and (not code_mode_active or master_mode_active)
+    )
     chosen_model = payload.model or _choose_internal_model(cleaned_query, use_web)
 
-    knowledge_results = retrieve_knowledge_context(payload.user_id, cleaned_query, top_k=4) if retrieval_allowed else []
-    web_results = retrieve_sources(cleaned_query, max_results=_web_result_budget(cleaned_query)) if use_web else []
+    knowledge_results = retrieve_knowledge_context(payload.user_id, working_query, top_k=4 if payload.deep_think else 3) if retrieval_allowed else []
+    web_results = retrieve_sources(
+        working_query,
+        max_results=_web_result_budget(cleaned_query, deep_think=payload.deep_think),
+    ) if use_web else []
     merged_results = _merge_sources(knowledge_results, web_results)
     results, eval_diag = _evaluate_sources(cleaned_query, merged_results)
 
@@ -873,7 +1010,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
         confidence = "low"
 
     if not has_model:
-        brain_answer = credon_answer(cleaned_query, sources=results or None, target_language=target_language)
+        brain_answer = credon_answer(working_query, sources=results or None, target_language=target_language)
         if brain_answer:
             answer = _clean_answer(brain_answer)
             save_message(payload.user_id, payload.session_id, "assistant", answer)
@@ -897,31 +1034,35 @@ def chat(payload: ChatRequest) -> ChatResponse:
             )
 
     # Thinking step
-    thinking = think_about_sources(cleaned_query, results, model=chosen_model) if payload.deep_think else ""
+    thinking = think_about_sources(working_query, results, model=chosen_model) if payload.deep_think else ""
 
     raw_model_answer = generate_grounded_answer(
-        cleaned_query, results, target_language,
+        working_query, results, target_language,
         model=chosen_model, thinking=thinking,
     )
     model_answer = _clean_answer(raw_model_answer)
 
-    answer, arbitration_source = _maybe_prefer_brain_answer(
-        cleaned_query,
-        model_answer,
-        results,
-        target_language,
-        thinking,
-        chosen_model,
-    )
+    if payload.deep_think:
+        answer, arbitration_source = _maybe_prefer_brain_answer(
+            working_query,
+            model_answer,
+            results,
+            target_language,
+            thinking,
+            chosen_model,
+        )
+    else:
+        answer, arbitration_source = model_answer, "model"
 
     # Extract suggestions + trim from selected answer
     suggestions = extract_suggestions(answer)
     answer = trim_answer_suggestions(answer)
 
     # Cross-check answer quality
-    answer, confidence = _apply_cross_check(
-        cleaned_query, answer, results, thinking, chosen_model, confidence
-    )
+    if payload.deep_think or len(results) >= 2:
+        answer, confidence = _apply_cross_check(
+            working_query, answer, results, thinking, chosen_model, confidence
+        )
 
     sources_payload = [{"title": item["title"], "url": item["url"]} for item in results]
     route_meta = {
@@ -930,6 +1071,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
             "score": round(quick_score, 4),
             "reason": quick_reason,
         },
+        "mode": {"code_mode": code_mode_active, "master_mode": master_mode_active},
         "answer_arbitration": {"chosen": arbitration_source},
         "evaluator": eval_diag,
     }
@@ -976,8 +1118,14 @@ def chat_stream(payload: ChatRequest):
 
     save_message(payload.user_id, payload.session_id, "user", cleaned_query)
     transcript = get_transcript(payload.user_id, payload.session_id)
+    working_query = _contextual_query(cleaned_query, transcript)
+    working_query, code_mode_active = _code_enhanced_query(working_query, payload.code_mode)
 
-    followup_mode = _is_contextual_followup(cleaned_query) or _is_ambiguous_short_followup(cleaned_query)
+    followup_mode = (
+        _is_contextual_followup(cleaned_query)
+        or _is_ambiguous_short_followup(cleaned_query)
+        or _is_reference_followup(cleaned_query)
+    )
     if followup_mode and not reply_context:
         reply_context = _latest_assistant_context(transcript)
 
@@ -1006,11 +1154,11 @@ def chat_stream(payload: ChatRequest):
 
         return StreamingResponse(_attachment_events(), media_type="text/event-stream")
 
-    if followup_mode and reply_context:
+    if followup_mode and reply_context and not _is_pdf_reference_query(cleaned_query):
         chosen_model = payload.model or _choose_internal_model(cleaned_query, False)
         answer_text = _clean_answer(
             generate_followup_from_context(
-                cleaned_query,
+                working_query,
                 reply_context,
                 target_language,
                 model=chosen_model,
@@ -1079,7 +1227,7 @@ def chat_stream(payload: ChatRequest):
         fast_answer = credon_answer(cleaned_query, sources=None, target_language=target_language)
         if not fast_answer:
             fast_answer = generate_grounded_answer(
-                cleaned_query,
+                working_query,
                 [],
                 target_language,
                 model=chosen_model,
@@ -1100,11 +1248,11 @@ def chat_stream(payload: ChatRequest):
 
     has_model = _has_available_model()
 
-    quick_knowledge = retrieve_knowledge_context(payload.user_id, cleaned_query, top_k=3) if not _is_greeting(cleaned_query) else []
+    quick_knowledge = retrieve_knowledge_context(payload.user_id, working_query, top_k=3) if not _is_greeting(cleaned_query) else []
     if quick_knowledge:
         quick_knowledge, _ = _evaluate_sources(cleaned_query, quick_knowledge, keep=3)
     quick_score, quick_reason, quick_diagnostics = _routing_score(
-        cleaned_query,
+        working_query,
         quick_knowledge,
         has_model=has_model,
         use_web=payload.use_web,
@@ -1112,9 +1260,9 @@ def chat_stream(payload: ChatRequest):
     quick_route = _should_try_brain_first(cleaned_query) and quick_score >= 0.78
     if quick_route:
         _log_routing("credon_answer_stream", quick_reason, quick_score, quick_diagnostics)
-        brain_answer = credon_answer(cleaned_query, sources=quick_knowledge or None, target_language=target_language)
+        brain_answer = credon_answer(working_query, sources=quick_knowledge or None, target_language=target_language)
         if brain_answer:
-            thinking = credon_think(cleaned_query, sources=quick_knowledge or None) if payload.deep_think else ""
+            thinking = credon_think(working_query, sources=quick_knowledge or None) if payload.deep_think else ""
             answer_text = _clean_answer(brain_answer)
             source_payload = [{"title": s["title"], "url": s["url"]} for s in quick_knowledge]
             save_message(
@@ -1138,7 +1286,15 @@ def chat_stream(payload: ChatRequest):
     _log_routing("model_generation_stream", quick_reason, quick_score, quick_diagnostics)
 
     retrieval_allowed = not _is_greeting(cleaned_query)
-    use_web = payload.use_web and retrieval_allowed and not is_personal_query(cleaned_query) and not followup_mode
+    master_mode_active = payload.use_web and payload.deep_think and code_mode_active
+    use_web = (
+        payload.use_web
+        and retrieval_allowed
+        and not is_personal_query(cleaned_query)
+        and not followup_mode
+        and not _is_pdf_reference_query(cleaned_query)
+        and (not code_mode_active or master_mode_active)
+    )
     chosen_model = payload.model or _choose_internal_model(cleaned_query, use_web)
 
     # Full pipeline with thinking stages
@@ -1165,10 +1321,13 @@ def chat_stream(payload: ChatRequest):
 
     def _stream_events_inner():
         results = []
-        knowledge_results = retrieve_knowledge_context(payload.user_id, cleaned_query, top_k=4) if retrieval_allowed else []
+        knowledge_results = retrieve_knowledge_context(payload.user_id, working_query, top_k=4 if payload.deep_think else 3) if retrieval_allowed else []
         if use_web:
             yield f"data: {_json.dumps({'type': 'status', 'stage': 'searching', 'message': 'Searching knowledge sources...'})}\n\n"
-            web_results = retrieve_sources(cleaned_query, max_results=_web_result_budget(cleaned_query))
+            web_results = retrieve_sources(
+                working_query,
+                max_results=_web_result_budget(cleaned_query, deep_think=payload.deep_think),
+            )
             merged_results = _merge_sources(knowledge_results, web_results)
             results, eval_diag = _evaluate_sources(cleaned_query, merged_results)
         else:
@@ -1184,10 +1343,10 @@ def chat_stream(payload: ChatRequest):
             confidence = "low"
 
         if not has_model:
-            brain_answer = credon_answer(cleaned_query, sources=results or None, target_language=target_language)
+            brain_answer = credon_answer(working_query, sources=results or None, target_language=target_language)
             if brain_answer:
                 answer_text = _clean_answer(brain_answer)
-                thinking = credon_think(cleaned_query, sources=results or None) if payload.deep_think else ""
+                thinking = credon_think(working_query, sources=results or None) if payload.deep_think else ""
                 suggestions = extract_suggestions(answer_text)
                 answer_text = trim_answer_suggestions(answer_text)
                 save_message(
@@ -1210,7 +1369,7 @@ def chat_stream(payload: ChatRequest):
             yield f"data: {_json.dumps({'type': 'status', 'stage': 'thinking', 'message': 'Analyzing sources and reasoning...'})}\n\n"
 
             thinking_tokens: list[str] = []
-            for token in think_about_sources_stream(cleaned_query, results, model=chosen_model):
+            for token in think_about_sources_stream(working_query, results, model=chosen_model):
                 thinking_tokens.append(token)
                 yield f"data: {_json.dumps({'type': 'thinking_token', 'content': token})}\n\n"
 
@@ -1233,12 +1392,16 @@ def chat_stream(payload: ChatRequest):
         yield f"data: {_json.dumps({'type': 'status', 'stage': 'generating', 'message': 'Composing response...'})}\n\n"
 
         full_answer: list[str] = []
+        token_budget_sec = 15 if not payload.deep_think else 45
+        budget_started = perf_counter()
         for token in generate_answer_stream(
-            cleaned_query, results, target_language,
+            working_query, results, target_language,
             model=chosen_model, thinking=thinking,
         ):
             full_answer.append(token)
             yield f"data: {_json.dumps({'type': 'token', 'content': token})}\n\n"
+            if (perf_counter() - budget_started) >= token_budget_sec and len("".join(full_answer).strip()) >= 120:
+                break
 
         answer_text = _clean_answer("".join(full_answer))
 
@@ -1255,18 +1418,22 @@ def chat_stream(payload: ChatRequest):
 
         # Cross-check answer quality
         _, adj_confidence = _apply_cross_check(
-            cleaned_query, answer_text, results, thinking, chosen_model, confidence
+            working_query, answer_text, results, thinking, chosen_model, confidence
         )
 
         save_message(
             payload.user_id, payload.session_id, "assistant", answer_text,
             thinking=thinking, confidence=adj_confidence,
             sources=sources_payload,
-            metadata={"routing": {"selected_route": "model_generation_stream", "score": round(quick_score, 4), "reason": quick_reason}, "evaluator": eval_diag},
+            metadata={
+                "routing": {"selected_route": "model_generation_stream", "score": round(quick_score, 4), "reason": quick_reason},
+                "mode": {"code_mode": code_mode_active, "master_mode": master_mode_active},
+                "evaluator": eval_diag,
+            },
         )
         learn_from_conversation(cleaned_query, answer_text, adj_confidence)
         elapsed = int((perf_counter() - start) * 1000)
-        yield f"data: {_json.dumps({'type': 'done', 'latency_ms': elapsed, 'confidence': adj_confidence, 'suggestions': suggestions, 'metadata': {'routing': {'selected_route': 'model_generation_stream', 'score': round(quick_score, 4), 'reason': quick_reason}, 'evaluator': eval_diag}})}\n\n"
+        yield f"data: {_json.dumps({'type': 'done', 'latency_ms': elapsed, 'confidence': adj_confidence, 'suggestions': suggestions, 'metadata': {'routing': {'selected_route': 'model_generation_stream', 'score': round(quick_score, 4), 'reason': quick_reason}, 'mode': {'code_mode': code_mode_active, 'master_mode': master_mode_active}, 'evaluator': eval_diag}})}\n\n"
 
     return StreamingResponse(_stream_events(), media_type="text/event-stream")
 
@@ -1292,10 +1459,20 @@ def get_user_transcript(user_id: str, session_id: str) -> ChatTranscriptResponse
     transcript = get_transcript(user_id, session_id)
     messages: list[ChatMessage] = []
     for item in transcript:
-        raw_sources = [s for s in (item.get("sources") or []) if isinstance(s, dict)]  # pyright: ignore[reportUnknownVariableType]
-        sources = [Source(title=str(s.get("title", "")), url=str(s.get("url", ""))) for s in raw_sources if "title" in s and "url" in s]
+        raw_sources_any = item.get("sources")
+        raw_sources: list[dict[str, Any]] = []
+        if isinstance(raw_sources_any, list):
+            source_items = cast(list[object], raw_sources_any)
+            for source_item_obj in source_items:
+                if isinstance(source_item_obj, dict):
+                    raw_sources.append(cast(dict[str, Any], source_item_obj))
+        sources = [
+            Source(title=str(source_item.get("title", "")), url=str(source_item.get("url", "")))
+            for source_item in raw_sources
+            if "title" in source_item and "url" in source_item
+        ]
         raw_meta = item.get("metadata")
-        meta: dict[str, Any] = raw_meta if isinstance(raw_meta, dict) else {}  # pyright: ignore[reportAssignmentType]
+        meta: dict[str, Any] = cast(dict[str, Any], raw_meta) if isinstance(raw_meta, dict) else {}
         messages.append(ChatMessage(
             role=cast(Literal["user", "assistant"], item.get("role", "assistant")),
             text=item.get("text", ""),
@@ -1319,11 +1496,42 @@ def submit_feedback(payload: FeedbackRequest):
             "user_id": payload.user_id,
             "session_id": payload.session_id,
             "vote": payload.vote,
+            "reason": payload.reason,
+            "category": payload.category,
             "preview": payload.message_text[:120],
         },
     )
     try:
         from app.services.credon_brain import learned_qa_ref, save_learned_ref, lock_ref
+
+        question_hint = ""
+        transcript = get_transcript(payload.user_id, payload.session_id)
+        target_answer = payload.message_text.strip()
+        target_norm = re.sub(r"\s+", " ", target_answer.lower())
+        for idx in range(len(transcript) - 1, -1, -1):
+            item = transcript[idx]
+            if str(item.get("role", "")).lower() != "assistant":
+                continue
+            item_text = str(item.get("text", "")).strip()
+            item_norm = re.sub(r"\s+", " ", item_text.lower())
+            if not item_norm:
+                continue
+            if item_norm == target_norm or item_norm[:120] == target_norm[:120]:
+                for j in range(idx - 1, -1, -1):
+                    prev = transcript[j]
+                    if str(prev.get("role", "")).lower() == "user":
+                        question_hint = str(prev.get("text", "")).strip()
+                        break
+                break
+
+        if question_hint:
+            register_feedback(
+                question=question_hint,
+                answer=payload.message_text,
+                vote=payload.vote,
+                category=payload.category,
+                reason=payload.reason,
+            )
 
         _qa_list = learned_qa_ref()
         _save_fn = save_learned_ref()

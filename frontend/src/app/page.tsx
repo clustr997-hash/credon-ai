@@ -23,7 +23,7 @@ import {
   type User,
   createUserWithEmailAndPassword,
 } from "firebase/auth";
-import { firebaseAuth } from "@/lib/firebase-client";
+import { enableFcmAndGetToken, firebaseAuth, getFcmReadiness } from "@/lib/firebase-client";
 
 /* ─────────────────────────── Types ─────────────────────────── */
 
@@ -68,9 +68,14 @@ type Message = {
   };
   metadata?: {
     routing?: { selected_route?: string; reason?: string; score?: number };
+    mode?: { code_mode?: boolean; master_mode?: boolean };
     evaluator?: Record<string, unknown>;
   };
+  variants?: string[];
+  activeVariant?: number;
 };
+
+type FeedbackCategory = "irrelevant" | "incorrect" | "too_slow" | "too_long" | "other";
 
 type PendingAttachment = {
   file: File;
@@ -190,6 +195,34 @@ function extractFollowUps(text: string): string[] {
     }
   }
   return suggestions.slice(0, 3);
+}
+
+function isCodeLike(text: string): boolean {
+  if (!text.trim()) return false;
+  if (text.includes("```")) return true;
+  return /(\b#include\b|\bdef\s+\w+\(|\bfunction\s+\w+\(|\bclass\s+\w+|\bint\s+main\s*\(|\bconsole\.log\b|\bSELECT\b|\bpublic\s+static\s+void\s+main\b)/i.test(text);
+}
+
+function extractMainPoints(text: string): string[] {
+  const clean = stripSuggestionSection(text).replace(/\r/g, "").trim();
+  if (!clean) return [];
+
+  const bulletMatches = clean
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => /^[-*]\s+/.test(line) || /^\d+\.\s+/.test(line))
+    .map((line) => line.replace(/^[-*]\s+/, "").replace(/^\d+\.\s+/, "").replace(/\*\*/g, "").trim())
+    .filter((line) => line.length > 25);
+  if (bulletMatches.length >= 2) {
+    return bulletMatches.slice(0, 3);
+  }
+
+  const sentencePoints = clean
+    .split(/(?<=[.!?])\s+/)
+    .map((line) => line.replace(/\*\*/g, "").trim())
+    .filter((line) => line.length >= 35 && line.length <= 220)
+    .slice(0, 3);
+  return sentencePoints;
 }
 
 /** Strip the "You might also want to know" suggestion section from answer text
@@ -317,9 +350,7 @@ function ThinkingBlock({ thinking, durationSec, streaming }: { thinking: string;
   return (
     <div className="mb-2">
       {/* DeepSeek-style header: "Thought for X seconds" */}
-      <button
-        type="button"
-        onClick={() => setCollapsed(!collapsed)}
+      <button type="button" onClick={() => setCollapsed(!collapsed)}
         className="flex items-center gap-2 text-xs group"
       >
         {/* Sparkle icon */}
@@ -495,9 +526,26 @@ function ImageGrid({ images }: { images: ImageResult[] }) {
 
 /* ─────────────────────────── Settings Modal ─────────────────────────── */
 
-function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setDeepThink }: {
-  open: boolean; onClose: () => void; webSearch: boolean; setWebSearch: (v: boolean) => void; deepThink: boolean; setDeepThink: (v: boolean) => void;
+function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setDeepThink, codeMode, setCodeMode, isGuest, onRequireLogin, onDownloadCurrentChat, onDownloadAllChats, onPreviewCurrentChat, onPreviewAllChats, fcmStatus, onEnableNotifications }: {
+  open: boolean;
+  onClose: () => void;
+  webSearch: boolean;
+  setWebSearch: (v: boolean) => void;
+  deepThink: boolean;
+  setDeepThink: (v: boolean) => void;
+  codeMode: boolean;
+  setCodeMode: (v: boolean) => void;
+  isGuest: boolean;
+  onRequireLogin: (feature: "web-search" | "deep-think" | "code-mode") => void;
+  onDownloadCurrentChat: () => void;
+  onDownloadAllChats: () => void;
+  onPreviewCurrentChat: () => void;
+  onPreviewAllChats: () => void;
+  fcmStatus: string;
+  onEnableNotifications: () => void;
 }) {
+  const [downloadTarget, setDownloadTarget] = useState<"current" | "all">("current");
+  const masterMode = !isGuest && webSearch && deepThink && codeMode;
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -529,7 +577,16 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
               <p className="text-sm font-medium text-zinc-200"><span className="text-base" role="img" aria-label="globe">🌐</span> Web Search</p>
               <p className="text-xs text-zinc-500">Search the internet for up-to-date answers</p>
             </div>
-            <button type="button" onClick={() => setWebSearch(!webSearch)} title="Toggle web search"
+            <button
+              type="button"
+              onClick={() => {
+                if (isGuest) {
+                  onRequireLogin("web-search");
+                  return;
+                }
+                setWebSearch(!webSearch);
+              }}
+              title={isGuest ? "Sign in to use Web Search" : "Toggle web search"}
               className={`w-11 h-6 rounded-full transition-colors relative ${webSearch ? "bg-cyan-500" : "bg-zinc-700"}`}>
               <span className={`block w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${webSearch ? "translate-x-5.5" : "translate-x-0.5"}`} />
             </button>
@@ -541,10 +598,50 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
               <p className="text-sm font-medium text-zinc-200"><span className="text-base" role="img" aria-label="brain">🧠</span> Deep Think</p>
               <p className="text-xs text-zinc-500">More thorough analysis (may take longer)</p>
             </div>
-            <button type="button" onClick={() => setDeepThink(!deepThink)} title="Toggle deep think"
+            <button
+              type="button"
+              onClick={() => {
+                if (isGuest) {
+                  onRequireLogin("deep-think");
+                  return;
+                }
+                setDeepThink(!deepThink);
+              }}
+              title={isGuest ? "Sign in to use DeepThink" : "Toggle deep think"}
               className={`w-11 h-6 rounded-full transition-colors relative ${deepThink ? "bg-purple-500" : "bg-zinc-700"}`}>
               <span className={`block w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${deepThink ? "translate-x-5.5" : "translate-x-0.5"}`} />
             </button>
+          </div>
+
+          {/* Code Mode Toggle */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-zinc-200"><span className="text-base font-bold" aria-hidden> &lt;/&gt; </span> Code Mode</p>
+              <p className="text-xs text-zinc-500">Prefer runnable code-first answers</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (isGuest) {
+                  onRequireLogin("code-mode");
+                  return;
+                }
+                setCodeMode(!codeMode);
+              }}
+              title={isGuest ? "Sign in to use Code Mode" : "Toggle code mode"}
+              className={`w-11 h-6 rounded-full transition-colors relative ${codeMode ? "bg-cyan-500" : "bg-zinc-700"}`}
+            >
+              <span className={`block w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${codeMode ? "translate-x-5.5" : "translate-x-0.5"}`} />
+            </button>
+          </div>
+
+          <div className={`rounded-xl border px-3 py-2 ${masterMode ? "border-cyan-500/35 bg-cyan-500/10" : "border-zinc-700/50 bg-zinc-900/40"}`}>
+            <p className="text-sm font-medium text-zinc-200">Master Mode</p>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              {masterMode
+                ? "Active: Web Search + DeepThink + Code Mode. Best for deep coding answers with reasoning and sources."
+                : "Turn on Web Search, DeepThink, and Code Mode together to unlock Master Mode."}
+            </p>
           </div>
 
           <div>
@@ -552,6 +649,77 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
             <p className="text-xs text-zinc-500 leading-relaxed">
               Credon AI is your intelligent assistant. It combines web search, multi-model reasoning, math solving, and image analysis to give you accurate, well-structured answers.
             </p>
+          </div>
+
+          <div className="rounded-xl border border-zinc-700/50 bg-zinc-900/40 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-zinc-200">Push Notifications (FCM)</p>
+                <p className="text-xs text-zinc-500 mt-1">{fcmStatus}</p>
+              </div>
+              <button
+                type="button"
+                onClick={onEnableNotifications}
+                className="rounded-lg border border-zinc-700/60 bg-zinc-800/70 px-3 py-1.5 text-xs text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200 transition"
+              >
+                Enable
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-medium text-zinc-300 mb-2">Download Center</h3>
+            <div className="rounded-xl border border-zinc-700/50 bg-zinc-900/40 p-3 space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDownloadTarget("current")}
+                  className={`rounded-lg px-3 py-2 text-xs transition border ${downloadTarget === "current" ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-200" : "border-zinc-700/60 bg-zinc-800/60 text-zinc-300 hover:border-zinc-600"}`}
+                >
+                  Current Chat
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDownloadTarget("all")}
+                  className={`rounded-lg px-3 py-2 text-xs transition border ${downloadTarget === "all" ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-200" : "border-zinc-700/60 bg-zinc-800/60 text-zinc-300 hover:border-zinc-600"}`}
+                >
+                  All Chats
+                </button>
+              </div>
+              <p className="text-[11px] text-zinc-500">Select what to export, then view in browser or download.</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={downloadTarget === "current" ? onPreviewCurrentChat : onPreviewAllChats}
+                  className="rounded-lg border border-zinc-700/60 bg-zinc-800/70 px-3 py-2 text-xs text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200 transition"
+                >
+                  View PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={downloadTarget === "current" ? onDownloadCurrentChat : onDownloadAllChats}
+                  className="rounded-lg border border-zinc-700/60 bg-zinc-800/70 px-3 py-2 text-xs text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200 transition"
+                >
+                  Download PDF
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-2 mt-2">
+              <button
+                type="button"
+                onClick={onDownloadCurrentChat}
+                className="rounded-xl border border-zinc-700/50 bg-zinc-800/50 px-3 py-2 text-left text-xs text-zinc-200 hover:border-cyan-500/40 hover:bg-zinc-800/80 transition"
+              >
+                Quick Download: Current Chat
+              </button>
+              <button
+                type="button"
+                onClick={onDownloadAllChats}
+                className="rounded-xl border border-zinc-700/50 bg-zinc-800/50 px-3 py-2 text-left text-xs text-zinc-200 hover:border-cyan-500/40 hover:bg-zinc-800/80 transition"
+              >
+                Quick Download: All Chats
+              </button>
+            </div>
           </div>
         </div>
         <div className="px-6 py-4 border-t border-zinc-800/50 flex justify-end">
@@ -585,6 +753,73 @@ function PrivacyModal({ open, onClose }: { open: boolean; onClose: () => void })
         </div>
         <div className="px-6 py-4 border-t border-zinc-800 shrink-0 flex justify-end">
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm rounded-xl bg-zinc-800 text-white hover:bg-zinc-700 transition">Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DislikeFeedbackModal({
+  open,
+  busy,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  busy: boolean;
+  onClose: () => void;
+  onSubmit: (category: FeedbackCategory, reason: string) => void;
+}) {
+  const [category, setCategory] = useState<FeedbackCategory>("irrelevant");
+  const [reason, setReason] = useState("");
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+      <div className="w-full max-w-md rounded-2xl border border-zinc-700/60 bg-zinc-900/90 shadow-2xl">
+        <div className="px-5 py-4 border-b border-zinc-800/60 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-white">Help us improve this answer</h3>
+          <button type="button" onClick={onClose} className="text-zinc-500 hover:text-zinc-200" title="Close">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div className="px-5 py-4 space-y-4">
+          <div>
+            <label className="block text-xs text-zinc-400 mb-1">What was wrong?</label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value as FeedbackCategory)}
+              title="Feedback category"
+              className="w-full rounded-xl border border-zinc-700/60 bg-zinc-800/70 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/50"
+            >
+              <option value="irrelevant">Irrelevant to my question</option>
+              <option value="incorrect">Factually incorrect</option>
+              <option value="too_slow">Too slow</option>
+              <option value="too_long">Too long / verbose</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-400 mb-1">Short note (optional)</label>
+            <textarea
+              rows={3}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Tell us what should be better"
+              className="w-full rounded-xl border border-zinc-700/60 bg-zinc-800/70 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/50 resize-none"
+            />
+          </div>
+        </div>
+        <div className="px-5 py-4 border-t border-zinc-800/60 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl text-sm text-zinc-300 hover:bg-zinc-800/70">Cancel</button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onSubmit(category, reason.trim())}
+            className="px-4 py-2 rounded-xl text-sm bg-linear-to-r from-cyan-500 to-blue-600 text-white disabled:opacity-50"
+          >
+            {busy ? "Sending..." : "Submit feedback"}
+          </button>
         </div>
       </div>
     </div>
@@ -900,6 +1135,139 @@ function AuthPage({ onGuest }: { onGuest: () => void }) {
   );
 }
 
+function LandingPage({ onStart, onTryFree }: { onStart: () => void; onTryFree: () => void }) {
+  return (
+    <div className="min-h-dvh bg-[#07080a] text-white overflow-hidden">
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute -top-24 left-1/2 -translate-x-1/2 h-72 w-72 rounded-full bg-cyan-500/20 blur-3xl" />
+        <div className="absolute top-1/3 -left-16 h-56 w-56 rounded-full bg-blue-500/20 blur-3xl" />
+        <div className="absolute bottom-0 right-0 h-64 w-64 rounded-full bg-cyan-400/10 blur-3xl" />
+      </div>
+      <div className="relative z-10 mx-auto max-w-6xl px-5 py-8 md:py-12">
+        <header className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white/10 border border-cyan-400/30 backdrop-blur-xl flex items-center justify-center overflow-hidden shadow-[0_8px_28px_rgba(34,211,238,0.18)]">
+              <CredonLogo size={28} />
+            </div>
+            <span className="text-sm md:text-base font-semibold tracking-[0.12em]">CREDON-AI</span>
+          </div>
+          <button
+            type="button"
+            onClick={onStart}
+            className="rounded-xl bg-white/10 border border-zinc-700/60 px-4 py-2 text-sm hover:bg-white/15 transition"
+          >
+            Sign in
+          </button>
+        </header>
+
+        <section className="grid md:grid-cols-2 gap-7 md:gap-10 mt-10 md:mt-16 items-center">
+          <div>
+            <p className="text-cyan-300/90 text-xs tracking-[0.14em] uppercase">Research. Build. Learn faster.</p>
+            <h1 className="mt-3 text-4xl md:text-6xl font-black leading-tight tracking-tight">
+              Modern AI Workspace for
+              <span className="block text-transparent bg-clip-text bg-linear-to-r from-cyan-200 via-cyan-400 to-blue-400">Students & Builders</span>
+            </h1>
+            <p className="mt-4 text-zinc-300 text-sm md:text-base max-w-xl">
+              Ask better questions, upload notes/PDFs, generate polished answers and exports,
+              and keep every conversation organized in one premium, fast interface.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={onStart}
+                className="rounded-2xl bg-linear-to-r from-cyan-500 to-blue-600 px-6 py-3 text-sm font-semibold shadow-[0_10px_30px_rgba(6,182,212,0.28)] hover:brightness-110 transition"
+              >
+                Get Started
+              </button>
+              <button
+                type="button"
+                onClick={onTryFree}
+                className="rounded-2xl bg-zinc-900/70 border border-zinc-700/60 px-6 py-3 text-sm font-semibold hover:border-cyan-500/40 hover:bg-zinc-800/80 transition"
+              >
+                Try Free (Guest)
+              </button>
+            </div>
+          </div>
+          <div className="rounded-3xl border border-zinc-700/50 bg-white/4 backdrop-blur-2xl p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_18px_40px_rgba(0,0,0,0.35)]">
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                "Instant answers with context",
+                "DeepThink when needed",
+                "PDF/image knowledge ingest",
+                "One-tap chat PDF exports",
+              ].map((feature) => (
+                <div key={feature} className="rounded-xl border border-zinc-700/50 bg-zinc-900/60 p-3 text-xs text-zinc-200">
+                  {feature}
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-10 md:mt-14 grid gap-4 md:grid-cols-3">
+          <article className="rounded-2xl border border-zinc-700/50 bg-zinc-900/55 p-4">
+            <h3 className="text-sm font-semibold text-cyan-200">Why CSE Students Prefer It</h3>
+            <p className="mt-2 text-xs text-zinc-300 leading-relaxed">
+              Code Mode pushes structured, runnable answers with practical steps. It is tuned for DSA,
+              debugging, DBMS, OS, and project workflows instead of generic textbook summaries.
+            </p>
+          </article>
+          <article className="rounded-2xl border border-zinc-700/50 bg-zinc-900/55 p-4">
+            <h3 className="text-sm font-semibold text-cyan-200">Smarter Than One-Model Chat</h3>
+            <p className="mt-2 text-xs text-zinc-300 leading-relaxed">
+              CREDON-AI routes each query through the best internal path: instant response, context follow-up,
+              grounded retrieval, or deep analysis. That means better speed on simple asks and better depth when needed.
+            </p>
+          </article>
+          <article className="rounded-2xl border border-zinc-700/50 bg-zinc-900/55 p-4">
+            <h3 className="text-sm font-semibold text-cyan-200">Built for Real Assignments</h3>
+            <p className="mt-2 text-xs text-zinc-300 leading-relaxed">
+              Upload class notes, PDFs, and visuals, then export polished responses as PDFs. Keep your sessions organized
+              so revision and report generation are faster before exams and project deadlines.
+            </p>
+          </article>
+        </section>
+
+        <section className="mt-10 grid gap-4 md:grid-cols-2">
+          <div className="rounded-2xl border border-zinc-700/50 bg-zinc-900/55 p-5">
+            <h3 className="text-base font-semibold text-white">Why CREDON-AI feels faster in real work</h3>
+            <ul className="mt-3 space-y-2 text-xs text-zinc-300 leading-relaxed">
+              <li>Adaptive routing for simple vs complex queries keeps average response time low.</li>
+              <li>Context-follow-up flow avoids irrelevant search for &quot;this/that&quot; style questions.</li>
+              <li>Code Mode + Master Mode prioritize practical, runnable outputs instead of generic essays.</li>
+              <li>Structured response metadata improves confidence, sources, and answer quality tracking.</li>
+            </ul>
+          </div>
+          <div className="rounded-2xl border border-zinc-700/50 bg-zinc-900/55 p-5">
+            <h3 className="text-base font-semibold text-white">Built for reliability after deployment</h3>
+            <ul className="mt-3 space-y-2 text-xs text-zinc-300 leading-relaxed">
+              <li>Guest-safe controls with premium mode gating and clean upgrade prompts.</li>
+              <li>PDF/Image ingest pipeline with OCR fallback for low-text documents.</li>
+              <li>Download center for answer and chat PDFs with preview and export flows.</li>
+              <li>Feedback-driven learning loop to improve future answers from real usage.</li>
+            </ul>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function InstallPromptBanner({ active, onInstall, onDismiss }: { active: boolean; onInstall: () => void; onDismiss: () => void }) {
+  if (!active) return null;
+  return (
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[min(92vw,640px)] rounded-2xl border border-cyan-500/30 bg-zinc-950/85 backdrop-blur-xl px-4 py-3 flex items-center gap-3 shadow-2xl">
+      <div className="w-8 h-8 rounded-lg bg-cyan-500/15 border border-cyan-400/30 flex items-center justify-center shrink-0 overflow-hidden"><CredonLogo size={22} /></div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm text-zinc-100 font-medium">Install CREDON-AI on your home screen</p>
+        <p className="text-xs text-zinc-400">Faster launch and app-like experience. We’ll remind rarely.</p>
+      </div>
+      <button type="button" onClick={onDismiss} className="text-xs text-zinc-500 hover:text-zinc-300">Later</button>
+      <button type="button" onClick={onInstall} className="rounded-xl bg-linear-to-r from-cyan-500 to-blue-600 px-3 py-1.5 text-xs font-semibold">Install</button>
+    </div>
+  );
+}
+
 /* ══════════════════════════════════════════════════════════════════
    CHAT PAGE
    ══════════════════════════════════════════════════════════════════ */
@@ -915,7 +1283,10 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   const [currentSession, setCurrentSession] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [copied, setCopied] = useState<number | null>(null);
-  const [loginPrompt, setLoginPrompt] = useState<string | null>(null);
+  const [loginPrompt, setLoginPrompt] = useState<"deep-think" | "knowledge" | "web-search" | "code-mode" | null>(null);
+  const [feedbackTarget, setFeedbackTarget] = useState<number | null>(null);
+  const [feedbackBusy, setFeedbackBusy] = useState(false);
+  const [fcmStatus, setFcmStatus] = useState("Checking FCM readiness...");
 
   /* ── Model & settings ── */
   const [, setModels] = useState<ModelInfo[]>([]);
@@ -923,11 +1294,16 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [knowledgeOpen, setKnowledgeOpen] = useState(false);
-  const [useWeb, setUseWeb] = useState(true);
+  const [useWeb, setUseWeb] = useState(() => !isGuest);
   const [deepThink, setDeepThink] = useState(() => {
+    if (isGuest) return false;
     if (typeof window === "undefined") return true;
     const stored = localStorage.getItem("credon-deep-think");
     return stored == null ? true : stored === "1";
+  });
+  const [codeMode, setCodeMode] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("credon-code-mode") === "1";
   });
   const [replyTo, setReplyTo] = useState<{ text: string; index: number } | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -943,7 +1319,9 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   /* ── File upload ── */
   const [attachedFiles, setAttachedFiles] = useState<PendingAttachment[]>([]);
   const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [transcriptLoading, setTranscriptLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   /* ── Abort controller for stop button ── */
@@ -965,6 +1343,25 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   const sessionStorageKey = `credon-active-session:${uid}`;
   const displayName = user?.displayName ?? user?.email?.split("@")[0] ?? "Guest";
   const isEmptyChat = messages.length === 1 && messages[0].text === GREET;
+  const allModesActive = !isGuest && useWeb && deepThink && codeMode;
+
+  useEffect(() => {
+    // Force guest mode to start in lightweight settings.
+    if (isGuest) {
+      setUseWeb(false);
+      setDeepThink(false);
+      setCodeMode(false);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("credon-deep-think", "0");
+        localStorage.setItem("credon-code-mode", "0");
+      }
+    }
+  }, [isGuest]);
+
+  useEffect(() => {
+    const readiness = getFcmReadiness();
+    setFcmStatus(readiness.ready ? "Ready. Enable to receive updates on supported browsers." : `Pending: ${readiness.reason}`);
+  }, []);
 
   /* Follow-up suggestions — prefer structured suggestions from backend */
   const followUps = useMemo(() => {
@@ -1067,6 +1464,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   useEffect(() => {
     if (!currentSession) return;
     const load = async () => {
+      setTranscriptLoading(true);
       try {
         const r = await fetch(`${API}/api/v1/chats/${uid}/${currentSession}`);
         if (!r.ok) { setMessages([{ role: "assistant", text: GREET, timestamp: Date.now() }]); return; }
@@ -1082,9 +1480,23 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
           metadata: m.metadata || undefined,
         })));
       } catch { setMessages([{ role: "assistant", text: GREET, timestamp: Date.now() }]); }
+      finally { setTranscriptLoading(false); }
     };
     void load();
   }, [uid, currentSession]);
+
+  const handleEnableNotifications = async () => {
+    const result = await enableFcmAndGetToken();
+    if (result.token) {
+      const shortToken = `${result.token.slice(0, 14)}...${result.token.slice(-8)}`;
+      if (typeof window !== "undefined") {
+        localStorage.setItem("credon-fcm-token", result.token);
+      }
+      setFcmStatus(`Enabled. Token ready (${shortToken}). Register this token on backend for targeted pushes.`);
+      return;
+    }
+    setFcmStatus(`Pending: ${result.error || "Unknown notification setup issue."}`);
+  };
 
   const newChat = () => {
     setCurrentSession(newSessionId());
@@ -1165,17 +1577,28 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     if (loading || uploadingFiles) return;
 
     const isRegenerate = options?.regenerate === true;
-    const replyContext = options?.replyContext ?? replyTo?.text ?? null;
+    let replyContext = options?.replyContext ?? replyTo?.text ?? null;
+    const wantsPdfExport = /\b(create|generate|make|export|download)\b.*\bpdf\b|\bpdf\b.*\b(create|generate|export|download)\b/i.test(q);
 
     const queuedFiles = [...attachedFiles];
     if (queuedFiles.length > 0) {
       setUploadingFiles(true);
       setUploadError(null);
+      const hasPdf = queuedFiles.some((item) => item.kind === "pdf");
+      const hasImage = queuedFiles.some((item) => item.kind === "image");
+      setUploadStatus(
+        hasPdf
+          ? "Extracting text from PDF and indexing context..."
+          : hasImage
+            ? "Reading image text and indexing context..."
+            : "Indexing attachments..."
+      );
       const failedFiles = await ingestAttachments(queuedFiles);
       if (failedFiles.length > 0) {
         setUploadError(`Could not fully process: ${failedFiles.slice(0, 2).map(f => f.split(':')[0]).join(", ")}${failedFiles.length > 2 ? "..." : ""}. Files were saved — text may be limited.`);
       }
       setUploadingFiles(false);
+      setUploadStatus(null);
     }
 
     if (!q) {
@@ -1189,6 +1612,70 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         timestamp: Date.now(),
       }]);
       return;
+    }
+
+    if (!replyContext && /\b(this|that|it)\s+(pdf|file|image|doc)\b|\bthis\s+(pdf|image)\b/i.test(q)) {
+      const lastUserWithAttachment = [...messages]
+        .reverse()
+        .find((m) => m.role === "user" && (m.attachments?.length ?? 0) > 0);
+      if (lastUserWithAttachment?.attachments?.length) {
+        const attachmentNames = lastUserWithAttachment.attachments.map((a) => `${a.type.toUpperCase()}: ${a.name}`).join(", ");
+        replyContext = `User referenced attachment(s): ${attachmentNames}`;
+      }
+    }
+
+    if (wantsPdfExport && !isRegenerate) {
+      const contextualAnswer =
+        replyContext
+        || [...messages].reverse().find((m) => m.role === "assistant" && m.text !== GREET && !m.streaming)?.text
+        || "";
+      if (contextualAnswer.trim()) {
+        const userMsg: Message = {
+          role: "user",
+          text: q,
+          timestamp: Date.now(),
+          replyTo: replyContext || undefined,
+        };
+        setMessages((prev) => [...prev, userMsg]);
+        setQuery("");
+        try {
+          const titleSource = [...messages].reverse().find((m) => m.role === "user")?.text || "Credon Answer";
+          const pdfResponse = await fetch(`${API}/api/v1/generate/export/answer-pdf`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: titleSource.slice(0, 80),
+              content: contextualAnswer,
+              user_id: uid,
+            }),
+          });
+          if (!pdfResponse.ok) {
+            const errText = await pdfResponse.text();
+            throw new Error(errText || "pdf_export_failed");
+          }
+          const blob = await pdfResponse.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `credon-answer-${Date.now()}.pdf`;
+          a.click();
+          URL.revokeObjectURL(url);
+          setMessages((prev) => [...prev, {
+            role: "assistant",
+            text: "PDF generated and downloaded. You can ask for a shorter or more detailed version too.",
+            timestamp: Date.now(),
+          }]);
+        } catch {
+          setMessages((prev) => [...prev, {
+            role: "assistant",
+            text: "I could not generate the PDF right now. Please try again in a moment. If this continues, restart backend so the latest export endpoint is active.",
+            timestamp: Date.now(),
+            confidence: "low",
+          }]);
+        }
+        setReplyTo(null);
+        return;
+      }
     }
 
     if (!isRegenerate) {
@@ -1215,7 +1702,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     });
     setAttachedFiles([]);
     setLoading(true);
-    setThinkingStage("searching");
+    setThinkingStage(null);
     setThinkingStart(Date.now());
     setLiveThinking("");
     setFollowUpsDismissed(false);
@@ -1239,6 +1726,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
           model: selectedModel || undefined,
           use_web: useWeb,
           deep_think: deepThink,
+          code_mode: isGuest ? false : codeMode,
           reply_to: replyContext || undefined,
         }),
         signal: controller.signal,
@@ -1313,7 +1801,22 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                     if (idx !== undefined) {
                       assistantIdx.current = idx;
                       const updated = [...prev];
-                      updated[idx] = { ...updated[idx], text: "", sources: undefined, images: undefined, thinking: undefined, suggestions: undefined, streaming: true, thinkingStreaming: false };
+                      const existing = updated[idx];
+                      const existingVariants = existing.variants && existing.variants.length > 0
+                        ? [...existing.variants]
+                        : (existing.text ? [existing.text] : []);
+                      updated[idx] = {
+                        ...existing,
+                        text: "",
+                        sources: undefined,
+                        images: undefined,
+                        thinking: undefined,
+                        suggestions: undefined,
+                        streaming: true,
+                        thinkingStreaming: false,
+                        variants: existingVariants,
+                        activeVariant: existingVariants.length,
+                      };
                       return updated;
                     }
                   }
@@ -1399,6 +1902,17 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                   evaluator: accEvaluator,
                   metadata: accMetadata,
                 };
+                if (isRegenerate) {
+                  const history = updated[idx].variants && updated[idx].variants.length > 0
+                    ? [...updated[idx].variants]
+                    : [];
+                  const candidate = updated[idx].text;
+                  if (candidate && history[history.length - 1] !== candidate) {
+                    history.push(candidate);
+                  }
+                  updated[idx].variants = history;
+                  updated[idx].activeVariant = Math.max(history.length - 1, 0);
+                }
                 return updated;
               });
               void thinkingActive;
@@ -1424,6 +1938,18 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
             suggestions: accSuggestions.length ? accSuggestions : undefined,
             evaluator: accEvaluator,
           };
+          if (isRegenerate) {
+            const history = updated[idx].variants && updated[idx].variants.length > 0
+              ? [...updated[idx].variants]
+              : [];
+            const candidate = stripSuggestionSection(updated[idx].text);
+            if (candidate && history[history.length - 1] !== candidate) {
+              history.push(candidate);
+            }
+            updated[idx].variants = history;
+            updated[idx].activeVariant = Math.max(history.length - 1, 0);
+            updated[idx].text = candidate;
+          }
           return updated;
         }
         return prev;
@@ -1524,6 +2050,99 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     setTimeout(() => setCopied(null), 2000);
   };
 
+  const showVariant = (index: number, direction: "prev" | "next") => {
+    setMessages((prev) => {
+      const next = [...prev];
+      const message = next[index];
+      if (!message || message.role !== "assistant" || !message.variants || message.variants.length < 2) {
+        return prev;
+      }
+      const active = message.activeVariant ?? (message.variants.length - 1);
+      const delta = direction === "prev" ? -1 : 1;
+      const target = active + delta;
+      if (target < 0 || target >= message.variants.length) return prev;
+      next[index] = {
+        ...message,
+        activeVariant: target,
+        text: message.variants[target],
+      };
+      return next;
+    });
+  };
+
+  const exportAnswerPdf = async (assistantIndex: number) => {
+    const assistant = messages[assistantIndex];
+    if (!assistant || assistant.role !== "assistant") return;
+    const prevUser = [...messages].slice(0, assistantIndex).reverse().find((m) => m.role === "user");
+    const title = prevUser?.text?.slice(0, 80) || "Credon Answer";
+    try {
+      const r = await fetch(`${API}/api/v1/generate/export/answer-pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, content: assistant.text, user_id: uid }),
+      });
+      if (!r.ok) throw new Error("export failed");
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `credon-answer-${Date.now()}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setUploadError("Could not export PDF right now. Try again, and restart backend if endpoint changes were not loaded.");
+    }
+  };
+
+  const openChatPdfBlob = (blob: Blob, filename: string, action: "download" | "view") => {
+    const url = URL.createObjectURL(blob);
+    if (action === "view") {
+      window.open(url, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(url), 15000);
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportCurrentChatPdf = async (action: "download" | "view") => {
+    try {
+      const r = await fetch(`${API}/api/v1/generate/export/chat-pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: uid, session_id: currentSession }),
+      });
+      if (!r.ok) throw new Error("download_failed");
+      const blob = await r.blob();
+      openChatPdfBlob(blob, `credon-chat-${currentSession}.pdf`, action);
+    } catch {
+      setUploadError(`Could not ${action === "view" ? "open" : "download"} current chat PDF.`);
+    }
+  };
+
+  const exportAllChatsPdf = async (action: "download" | "view") => {
+    try {
+      const r = await fetch(`${API}/api/v1/generate/export/all-chats-pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: uid }),
+      });
+      if (!r.ok) throw new Error("download_failed");
+      const blob = await r.blob();
+      openChatPdfBlob(blob, "credon-all-chats.pdf", action);
+    } catch {
+      setUploadError(`Could not ${action === "view" ? "open" : "download"} all chats PDF.`);
+    }
+  };
+
+  const downloadCurrentChatPdf = async () => exportCurrentChatPdf("download");
+  const downloadAllChatsPdf = async () => exportAllChatsPdf("download");
+  const previewCurrentChatPdf = async () => exportCurrentChatPdf("view");
+  const previewAllChatsPdf = async () => exportAllChatsPdf("view");
+
   const regenerateAt = async (assistantIndex: number) => {
     const prevUser = [...messages].slice(0, assistantIndex).reverse().find((m) => m.role === "user");
     if (!prevUser) return;
@@ -1536,9 +2155,36 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     inputRef.current?.focus();
   };
 
-  const submitFeedback = async (messageIndex: number, vote: "up" | "down") => {
+  const quickFixCodeFromMessage = async (index: number) => {
+    const msg = messages[index];
+    if (!msg || msg.role !== "user") return;
+    if (!isCodeLike(msg.text)) return;
+    const fixPrompt = `Please review and fix this code. Explain what was wrong, then provide a corrected version and quick test/run steps. Keep explanation Hinglish if I asked in Hinglish.\n\n${msg.text}`;
+    if (!isGuest) {
+      setCodeMode(true);
+      if (typeof window !== "undefined") localStorage.setItem("credon-code-mode", "1");
+    }
+    await send(fixPrompt, { replyContext: msg.text.slice(0, 700) });
+  };
+
+  const submitFeedback = async (
+    messageIndex: number,
+    vote: "up" | "down",
+    category?: FeedbackCategory,
+    reason?: string,
+  ) => {
     const msg = messages[messageIndex];
     if (!msg || msg.role !== "assistant") return;
+
+    if (vote === "down" && !category && feedbackTarget === null) {
+      setFeedbackTarget(messageIndex);
+      return;
+    }
+
+    if (vote === "down") {
+      setFeedbackBusy(true);
+    }
+
     setMessages((prev) => {
       const updated = [...prev];
       updated[messageIndex] = { ...updated[messageIndex], feedback: vote };
@@ -1547,9 +2193,22 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     try {
       await fetch(`${API}/api/v1/feedback`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: uid, session_id: currentSession, message_text: msg.text, vote }),
+        body: JSON.stringify({
+          user_id: uid,
+          session_id: currentSession,
+          message_text: msg.text,
+          vote,
+          category: vote === "down" ? category : undefined,
+          reason: vote === "down" ? reason : undefined,
+        }),
       });
     } catch { /* non-blocking */ }
+    finally {
+      if (vote === "down") {
+        setFeedbackBusy(false);
+        setFeedbackTarget(null);
+      }
+    }
   };
 
   /* Session groups */
@@ -1560,26 +2219,60 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   }, [sessions]);
 
   return (
-    <div className="h-dvh flex bg-[#09090b] text-white overflow-hidden">
+    <div className="h-dvh flex bg-[#07080a] text-white overflow-hidden">
       {sidebarOpen && <div className="fixed inset-0 bg-black/60 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} webSearch={useWeb} setWebSearch={setUseWeb} deepThink={deepThink} setDeepThink={(v) => { setDeepThink(v); if (typeof window !== "undefined") localStorage.setItem("credon-deep-think", v ? "1" : "0"); }} />
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        webSearch={useWeb}
+        setWebSearch={setUseWeb}
+        deepThink={deepThink}
+        setDeepThink={(v) => {
+          setDeepThink(v);
+          if (typeof window !== "undefined") localStorage.setItem("credon-deep-think", v ? "1" : "0");
+        }}
+        codeMode={codeMode}
+        setCodeMode={(v) => {
+          if (isGuest) {
+            setLoginPrompt("code-mode");
+            return;
+          }
+          setCodeMode(v);
+          if (typeof window !== "undefined") localStorage.setItem("credon-code-mode", v ? "1" : "0");
+        }}
+        isGuest={isGuest}
+        onRequireLogin={(feature) => setLoginPrompt(feature)}
+        onDownloadCurrentChat={downloadCurrentChatPdf}
+        onDownloadAllChats={downloadAllChatsPdf}
+        onPreviewCurrentChat={previewCurrentChatPdf}
+        onPreviewAllChats={previewAllChatsPdf}
+        fcmStatus={fcmStatus}
+        onEnableNotifications={handleEnableNotifications}
+      />
       <PrivacyModal open={privacyOpen} onClose={() => setPrivacyOpen(false)} />
       <KnowledgeUploadModal open={knowledgeOpen} onClose={() => setKnowledgeOpen(false)} uid={uid} />
+      <DislikeFeedbackModal
+        key={feedbackTarget ?? -1}
+        open={feedbackTarget !== null}
+        busy={feedbackBusy}
+        onClose={() => { if (!feedbackBusy) setFeedbackTarget(null); }}
+        onSubmit={(category, reason) => { if (feedbackTarget !== null) void submitFeedback(feedbackTarget, "down", category, reason); }}
+      />
 
       {/* Hidden file input */}
         <label htmlFor="chat-image-upload" className="sr-only">Attach image or PDF files</label>
         <input id="chat-image-upload" ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={handleFileSelect} aria-label="Attach image or PDF files" />
 
       {/* ─── Sidebar (DeepSeek-style) ─── */}
-      <aside className={`fixed md:static inset-y-0 left-0 z-40 w-70 bg-[#0f0f11] border-r border-zinc-800/50 flex flex-col transition-transform duration-200 ease-out md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+      <aside className={`fixed md:static inset-y-0 left-0 z-40 w-70 bg-zinc-950/80 backdrop-blur-xl border-r border-zinc-800/60 flex flex-col transition-transform duration-200 ease-out md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         {/* Sidebar header — clean, just new chat */}
         <div className="h-14 flex items-center justify-between px-3 shrink-0 border-b border-zinc-800/40">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-linear-to-br from-cyan-500 to-blue-600 flex items-center justify-center overflow-hidden">
               <CredonLogo size={22} />
             </div>
-            <span className="text-sm font-semibold text-white tracking-tight">Credon AI</span>
+            <span className="text-sm font-semibold text-white tracking-tight">CREDON-AI</span>
           </div>
           <div className="flex items-center gap-1">
             <button type="button" onClick={newChat} className="p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition" title="New chat">
@@ -1643,7 +2336,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       {/* ─── Main ─── */}
       <main className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="h-14 border-b border-zinc-800/30 flex items-center px-3 sm:px-4 gap-2 sm:gap-3 shrink-0 bg-[#09090b]/90 backdrop-blur-md">
+        <header className="h-14 border-b border-zinc-800/40 flex items-center px-3 sm:px-4 gap-2 sm:gap-3 shrink-0 bg-zinc-950/70 backdrop-blur-xl">
           {/* Sidebar toggle — panel icon */}
           <button type="button" onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition" title="Toggle sidebar">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -1651,7 +2344,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               <path d="M9 3v18" />
             </svg>
           </button>
-          <span className="font-semibold tracking-tight text-sm sm:text-base bg-linear-to-r from-white to-zinc-300 bg-clip-text text-transparent">Credon AI</span>
+          <span className="font-semibold tracking-tight text-sm sm:text-base bg-linear-to-r from-white to-zinc-300 bg-clip-text text-transparent">CREDON-AI</span>
           <button type="button" onClick={() => setSettingsOpen(true)}
             className="ml-auto flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 px-2 sm:px-3 py-1.5 rounded-lg border border-zinc-700/40 transition" title="Settings">
             <span className="hidden sm:inline">Credon Alpha 1</span>
@@ -1678,6 +2371,20 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                   </button>
                 ))}
               </div>
+            </div>
+          ) : transcriptLoading ? (
+            <div className="max-w-3xl mx-auto px-3 sm:px-6 py-6 space-y-4">
+              {[0, 1, 2].map((idx) => (
+                <div key={idx} className="flex gap-3 items-start animate-pulse">
+                  <div className="w-8 h-8 rounded-full bg-zinc-800" />
+                  <div className="flex-1">
+                    <div className="h-3 w-32 bg-zinc-800 rounded mb-2" />
+                    <div className="h-4 w-full bg-zinc-800 rounded mb-1.5" />
+                    <div className="h-4 w-11/12 bg-zinc-800 rounded mb-1.5" />
+                    <div className="h-4 w-10/12 bg-zinc-800 rounded" />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : (
             <div className="max-w-3xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-5">
@@ -1732,11 +2439,24 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                     {/* Bubble */}
                     <div className={`rounded-2xl px-4 py-3 ${
                       m.role === "user"
-                        ? "bg-linear-to-br from-cyan-600 to-blue-600 text-white rounded-tr-md shadow-md shadow-cyan-500/10"
-                        : "bg-zinc-800/70 border border-zinc-700/30 rounded-tl-md"
+                        ? "bg-white/8 border border-cyan-400/30 text-white rounded-tr-md shadow-lg shadow-cyan-500/10 backdrop-blur-lg"
+                        : "bg-zinc-900/60 border border-zinc-700/40 rounded-tl-md backdrop-blur-md"
                     }`}>
+                      {m.role === "assistant" && !m.streaming && m.text.length > 280 && extractMainPoints(m.text).length > 0 && (
+                        <div className="mb-2.5 rounded-xl border border-cyan-500/25 bg-cyan-500/6 p-2.5">
+                          <p className="text-[11px] font-medium text-cyan-200 mb-2 tracking-wide uppercase">Main Points</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {extractMainPoints(m.text).map((point, idx) => (
+                              <div key={idx} className="rounded-lg border border-cyan-500/20 bg-zinc-900/65 px-2.5 py-2 text-[11px] text-zinc-200 leading-relaxed">
+                                <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-cyan-500/20 text-cyan-200 text-[10px] mr-1.5 align-middle">{idx + 1}</span>
+                                <span className="align-middle">{point}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       {m.role === "assistant" && m.text !== GREET ? (
-                        <div className="prose prose-invert prose-sm max-w-none text-[14px] sm:text-[15px] leading-relaxed [&_pre]:bg-zinc-900/80 [&_pre]:border [&_pre]:border-zinc-700/30 [&_pre]:rounded-xl [&_pre]:p-3 [&_pre]:overflow-x-auto [&_code]:text-cyan-300 [&_code]:text-[13px] [&_a]:text-cyan-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-cyan-500/30 hover:[&_a]:decoration-cyan-500 [&_h1]:text-lg [&_h1]:tracking-tight [&_h2]:text-base [&_h2]:tracking-tight [&_h3]:text-sm [&_h1]:font-bold [&_h2]:font-semibold [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:my-1.5 [&_li]:my-0.5 [&_blockquote]:border-l-2 [&_blockquote]:border-cyan-500/40 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-zinc-400 [&_table]:border-collapse [&_th]:border [&_th]:border-zinc-700 [&_th]:px-3 [&_th]:py-1.5 [&_th]:bg-zinc-800 [&_td]:border [&_td]:border-zinc-700 [&_td]:px-3 [&_td]:py-1.5 [&_hr]:border-zinc-700/50 [&_strong]:text-zinc-100 [&_strong]:font-semibold">
+                        <div className="prose prose-invert prose-sm max-w-none text-[14px] sm:text-[15px] leading-relaxed [&_pre]:bg-zinc-900/80 [&_pre]:border [&_pre]:border-zinc-700/30 [&_pre]:rounded-xl [&_pre]:p-3 [&_pre]:overflow-x-auto [&_code]:text-cyan-300 [&_code]:text-[13px] [&_a]:text-cyan-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-cyan-500/30 hover:[&_a]:decoration-cyan-500 [&_h1]:text-xl [&_h1]:tracking-tight [&_h2]:text-lg [&_h2]:tracking-tight [&_h3]:text-base [&_h1]:font-bold [&_h2]:font-semibold [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_li]:my-1 [&_blockquote]:border-l-2 [&_blockquote]:border-cyan-500/40 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-zinc-300 [&_table]:border-collapse [&_th]:border [&_th]:border-zinc-700 [&_th]:px-3 [&_th]:py-1.5 [&_th]:bg-zinc-800 [&_td]:border [&_td]:border-zinc-700 [&_td]:px-3 [&_td]:py-1.5 [&_hr]:border-zinc-700/50 [&_strong]:text-zinc-100 [&_strong]:font-semibold [&_strong]:bg-cyan-400/10 [&_strong]:px-1.5 [&_strong]:py-0.5 [&_strong]:rounded-md [&_li]:marker:text-cyan-300 [&_p:first-of-type]:text-zinc-100 [&_p:first-of-type]:font-medium">
                           <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                             {m.text || (m.streaming ? "\u200B" : "")}
                           </ReactMarkdown>
@@ -1791,9 +2511,38 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                       </p>
                     )}
 
+                    {m.role === "assistant" && m.metadata?.mode?.master_mode && !m.streaming && (
+                      <p className="mt-1 text-[11px] text-cyan-300/90">Master Mode response: deep reasoning + sources + code optimization</p>
+                    )}
+
                     {/* Actions row */}
                     <div className={`flex flex-wrap items-center gap-1.5 mt-1.5 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
                       <span className="text-[11px] text-zinc-600 mr-1">{fmtTime(m.timestamp)}</span>
+                      {m.role === "assistant" && (m.variants?.length ?? 0) > 1 && (
+                        <div className="inline-flex items-center gap-1 rounded-lg border border-zinc-700/50 bg-zinc-900/70 px-1 py-0.5">
+                          <button
+                            type="button"
+                            onClick={() => showVariant(i, "prev")}
+                            disabled={(m.activeVariant ?? (m.variants!.length - 1)) <= 0}
+                            className="p-1 text-zinc-500 hover:text-zinc-200 disabled:opacity-30"
+                            title="Show previous version"
+                          >
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M15 19l-7-7 7-7" /></svg>
+                          </button>
+                          <span className="text-[10px] text-zinc-500 px-1">
+                            {(m.activeVariant ?? (m.variants!.length - 1)) + 1}/{m.variants!.length}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => showVariant(i, "next")}
+                            disabled={(m.activeVariant ?? (m.variants!.length - 1)) >= (m.variants!.length - 1)}
+                            className="p-1 text-zinc-500 hover:text-zinc-200 disabled:opacity-30"
+                            title="Show next version"
+                          >
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M9 5l7 7-7 7" /></svg>
+                          </button>
+                        </div>
+                      )}
 
                       {m.role === "assistant" && m.text !== GREET && !m.streaming && (
                         <>
@@ -1837,11 +2586,21 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                             )}
                           </button>
+                          <button type="button" onClick={() => exportAnswerPdf(i)} className="text-zinc-600 hover:text-zinc-200 transition p-1.5 rounded-lg hover:bg-zinc-800/60" title="Download as PDF">
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V4m0 12l-4-4m4 4l4-4M4 20h16" />
+                            </svg>
+                          </button>
                         </>
                       )}
 
                       {m.role === "user" && (
                         <>
+                          {isCodeLike(m.text) && (
+                            <button type="button" onClick={() => quickFixCodeFromMessage(i)} className="text-zinc-600 hover:text-cyan-300 transition p-1 rounded hover:bg-zinc-800/60 text-[10px] font-medium" title="Fix this code with Code Mode">
+                              Fix Code
+                            </button>
+                          )}
                           <button type="button" onClick={() => copyText(i, m.text)} className="text-zinc-600 hover:text-zinc-300 transition p-1 rounded hover:bg-zinc-800/60" title="Copy">
                             {copied === i ? (
                               <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M5 13l4 4L19 7" /></svg>
@@ -1925,7 +2684,13 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         {loginPrompt && (
           <div className="border-t border-cyan-500/20 bg-cyan-500/5 px-4 py-3 flex items-center justify-between gap-3">
             <p className="text-sm text-zinc-300">
-              {loginPrompt === "deep-think" ? "Sign in to use DeepThink mode" : "Sign in to upload knowledge"}
+              {loginPrompt === "deep-think"
+                ? "Sign in to use DeepThink mode"
+                : loginPrompt === "web-search"
+                  ? "Sign in to use Web Search"
+                  : loginPrompt === "code-mode"
+                    ? "Sign in to use Code Mode"
+                  : "Sign in to upload knowledge"}
             </p>
             <div className="flex items-center gap-2 shrink-0">
               <button type="button" onClick={() => setLoginPrompt(null)} className="text-xs text-zinc-500 hover:text-zinc-300 transition px-2 py-1 rounded-lg hover:bg-zinc-800/60">Dismiss</button>
@@ -1935,7 +2700,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         )}
 
         {/* ─── Input Area ─── */}
-        <div className="border-t border-zinc-800/30 p-2 sm:p-4 bg-[#09090b]/90 backdrop-blur-md">
+        <div className="border-t border-zinc-800/40 p-2 sm:p-4 bg-zinc-950/70 backdrop-blur-xl">
           <form onSubmit={onSubmit} className="max-w-3xl mx-auto">
             {/* Editing indicator */}
             {editingIndex !== null && (
@@ -1990,7 +2755,82 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               <p className="mb-2 text-[11px] text-amber-300">{uploadError}</p>
             )}
 
-            <div className="flex gap-1.5 sm:gap-2 items-end bg-zinc-900/80 border border-zinc-700/50 rounded-2xl px-2 sm:px-3 py-2 focus-within:border-cyan-500/40 focus-within:shadow-cyan-500/5 transition-all shadow-lg shadow-black/20">
+            {allModesActive && (
+              <div className="mb-2 rounded-xl border border-cyan-400/35 bg-linear-to-r from-cyan-500/12 via-blue-500/8 to-cyan-500/12 px-3 py-1.5 text-[11px] text-cyan-100 trinity-glow">
+                Master Mode active: Web Search + DeepThink + Code Mode
+              </div>
+            )}
+            <div className="sm:hidden mb-2 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (isGuest) {
+                    setLoginPrompt("web-search");
+                    return;
+                  }
+                  setUseWeb((prev) => !prev);
+                }}
+                className={`h-10 rounded-lg border text-[11px] font-medium transition ${useWeb ? "border-cyan-500/50 bg-cyan-500/12 text-cyan-200" : "border-zinc-700/50 bg-zinc-900/70 text-zinc-400"}`}
+                title={isGuest ? "Sign in to use Web Search" : "Toggle Web Search"}
+              >
+                Web Search
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isGuest) {
+                    setLoginPrompt("deep-think");
+                    return;
+                  }
+                  setDeepThink((prev) => {
+                    const next = !prev;
+                    if (typeof window !== "undefined") {
+                      localStorage.setItem("credon-deep-think", next ? "1" : "0");
+                    }
+                    return next;
+                  });
+                }}
+                className={`h-10 rounded-lg border text-[11px] font-medium transition ${deepThink ? "border-cyan-500/50 bg-cyan-500/12 text-cyan-200" : "border-zinc-700/50 bg-zinc-900/70 text-zinc-400"}`}
+                title={isGuest ? "Sign in to use DeepThink" : "Toggle DeepThink"}
+              >
+                DeepThink
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isGuest) {
+                    setLoginPrompt("code-mode");
+                    return;
+                  }
+                  setCodeMode((prev) => {
+                    const next = !prev;
+                    if (typeof window !== "undefined") {
+                      localStorage.setItem("credon-code-mode", next ? "1" : "0");
+                    }
+                    return next;
+                  });
+                }}
+                className={`h-10 rounded-lg border text-[11px] font-medium transition ${codeMode ? "border-cyan-500/50 bg-cyan-500/12 text-cyan-200" : "border-zinc-700/50 bg-zinc-900/70 text-zinc-400"}`}
+                title={isGuest ? "Sign in to use Code Mode" : "Toggle Code Mode"}
+              >
+                Code Mode
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isGuest) {
+                    setLoginPrompt("knowledge");
+                    return;
+                  }
+                  setKnowledgeOpen(true);
+                }}
+                className="h-10 rounded-lg border border-zinc-700/50 bg-zinc-900/70 text-[11px] font-medium text-zinc-300 transition hover:border-emerald-500/50 hover:text-emerald-300"
+                title={isGuest ? "Sign in to upload knowledge" : "Upload notes and PDFs"}
+              >
+                Knowledge
+              </button>
+            </div>
+            <div className={`flex gap-1.5 sm:gap-2 items-end bg-zinc-900/80 border rounded-2xl px-2 sm:px-3 py-2 focus-within:border-cyan-500/40 focus-within:shadow-cyan-500/5 transition-all shadow-lg shadow-black/20 ${allModesActive ? "border-cyan-500/45 trinity-glow" : "border-zinc-700/50"}`}>
               {/* Attach file button */}
               <button type="button" onClick={() => fileInputRef.current?.click()}
                 className="p-2 text-zinc-500 hover:text-zinc-300 transition rounded-lg hover:bg-zinc-800/60 shrink-0" title="Attach image or PDF">
@@ -2000,9 +2840,16 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               </button>
 
               {/* Web search toggle */}
-              <button type="button" onClick={() => setUseWeb((prev) => !prev)}
-                className={`p-2 rounded-lg transition shrink-0 ${useWeb ? "text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
-                title={useWeb ? "Web search ON" : "Web search OFF"}>
+              <button type="button"
+                onClick={() => {
+                  if (isGuest) {
+                    setLoginPrompt("web-search");
+                    return;
+                  }
+                  setUseWeb((prev) => !prev);
+                }}
+                className={`hidden sm:flex p-2 rounded-lg transition shrink-0 ${useWeb ? "text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
+                title={isGuest ? "Sign in to use Web Search" : useWeb ? "Web search ON" : "Web search OFF"}>
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" />
                 </svg>
@@ -2030,6 +2877,28 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
                 </svg>
+              </button>
+
+              {/* Code mode toggle */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (isGuest) {
+                    setLoginPrompt("code-mode");
+                    return;
+                  }
+                  setCodeMode((prev) => {
+                    const next = !prev;
+                    if (typeof window !== "undefined") {
+                      localStorage.setItem("credon-code-mode", next ? "1" : "0");
+                    }
+                    return next;
+                  });
+                }}
+                className={`hidden sm:flex p-2 rounded-lg transition shrink-0 ${codeMode ? "text-cyan-300 bg-cyan-500/10 border border-cyan-500/30" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
+                title={isGuest ? "Sign in to use Code Mode" : codeMode ? "Code Mode ON" : "Code Mode OFF"}
+              >
+                <span className="text-xs font-bold">&lt;/&gt;</span>
               </button>
 
               {/* Upload knowledge button — guests see sign-in prompt */}
@@ -2076,7 +2945,14 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 </button>
               )}
             </div>
-            {uploadingFiles && <p className="text-center text-[11px] text-cyan-300 mt-1.5 sm:mt-2">Indexing attachments for OCR and retrieval...</p>}
+            {uploadingFiles && uploadStatus && (
+              <p className="text-center text-[11px] text-cyan-300 mt-1.5 sm:mt-2 flex items-center justify-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-300 animate-dot-1" />
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-300 animate-dot-2" />
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-300 animate-dot-3" />
+                <span>{uploadStatus}</span>
+              </p>
+            )}
             <p className="text-center text-[10px] sm:text-[11px] text-zinc-600 mt-1.5 sm:mt-2 select-none">Credon AI can make mistakes. Verify important information.</p>
           </form>
         </div>
@@ -2093,6 +2969,9 @@ export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [checked, setChecked] = useState(false);
   const [guest, setGuest] = useState(false);
+  const [showLanding, setShowLanding] = useState(true);
+  const [installPromptEvent, setInstallPromptEvent] = useState<Event | null>(null);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
 
   useEffect(() => {
     if (!firebaseAuth) {
@@ -2100,6 +2979,28 @@ export default function Home() {
       return () => clearTimeout(t);
     }
     return onAuthStateChanged(firebaseAuth, (u) => { setUser(u); setChecked(true); });
+  }, []);
+
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {
+        // Non-fatal in local/dev environments.
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    const dismissedUntil = Number(localStorage.getItem("credon-install-dismiss-until") || "0");
+    const alreadyInstalled = window.matchMedia("(display-mode: standalone)").matches;
+    if (alreadyInstalled || Date.now() < dismissedUntil) return;
+
+    const handler = (event: Event) => {
+      event.preventDefault();
+      setInstallPromptEvent(event);
+      setShowInstallPrompt(true);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
 
   if (!checked) return (
@@ -2111,9 +3012,47 @@ export default function Home() {
     </div>
   );
 
+  if (!user && !guest && showLanding) {
+    return (
+      <>
+        <LandingPage onStart={() => setShowLanding(false)} onTryFree={() => setGuest(true)} />
+        <InstallPromptBanner
+          active={showInstallPrompt}
+          onInstall={async () => {
+            const promptEvent = installPromptEvent as ({ prompt: () => Promise<void>; userChoice?: Promise<{ outcome: string }> } | null);
+            if (!promptEvent) return;
+            await promptEvent.prompt();
+            setShowInstallPrompt(false);
+            setInstallPromptEvent(null);
+          }}
+          onDismiss={() => {
+            localStorage.setItem("credon-install-dismiss-until", String(Date.now() + (7 * 24 * 60 * 60 * 1000)));
+            setShowInstallPrompt(false);
+          }}
+        />
+      </>
+    );
+  }
+
   if (!user && !guest) return <AuthPage onGuest={() => setGuest(true)} />;
 
   return (
-    <ChatPage user={user} isGuest={!user} onSignOut={async () => { if (firebaseAuth) await signOut(firebaseAuth); setGuest(false); }} />
+    <>
+      <ChatPage user={user} isGuest={!user} onSignOut={async () => { if (firebaseAuth) await signOut(firebaseAuth); setGuest(false); setShowLanding(true); }} />
+      <InstallPromptBanner
+        active={showInstallPrompt}
+        onInstall={async () => {
+          const promptEvent = installPromptEvent as ({ prompt: () => Promise<void>; userChoice?: Promise<{ outcome: string }> } | null);
+          if (!promptEvent) return;
+          await promptEvent.prompt();
+          setShowInstallPrompt(false);
+          setInstallPromptEvent(null);
+        }}
+        onDismiss={() => {
+          localStorage.setItem("credon-install-dismiss-until", String(Date.now() + (7 * 24 * 60 * 60 * 1000)));
+          setShowInstallPrompt(false);
+        }}
+      />
+    </>
   );
 }
