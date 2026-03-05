@@ -1,25 +1,58 @@
-"""Enhanced retrieval — DuckDuckGo + multiple fallbacks + image search.
+"""Enhanced retrieval — multi-engine web search + source extraction.
 
 Improvements over v1:
 * Parallel page extraction (4 workers)
 * Image search for visual queries
 * Better snippet quality
-* Multiple search provider fallbacks (DDG → Brave → Google scrape → Wikipedia)
+* Multi-engine retrieval (DDG + LangSearch + Serper + Wikipedia)
 """
 
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import os
 import re
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote_plus
 
 import requests
 import trafilatura
-from ddgs import DDGS
+from ddgs import DDGS  # type: ignore[import-untyped]
 
 _PAGE_TIMEOUT = 3
+
+
+def _is_complex_query(query: str) -> bool:
+    q = query.lower().strip()
+    if len(q.split()) >= 9:
+        return True
+    patterns = [
+        r"\b(explain|compare|analy[sz]e|difference|trade[- ]?off|why|how)\b",
+        r"\b(latest|recent|202[4-9]|current)\b",
+        r"\b(with sources|citations?|references?)\b",
+    ]
+    return any(re.search(p, q) for p in patterns)
+
+
+def _page_extraction_mode() -> str:
+    """Supported values:
+    - false/off/0: disabled
+    - true/on/1/auto: strategic extraction
+    - full: always extract
+    """
+    raw = os.getenv("ENABLE_PAGE_EXTRACTION", "false").strip().lower()
+    if raw in {"full"}:
+        return "full"
+    if raw in {"true", "1", "on", "auto"}:
+        return "strategic"
+    return "off"
+
+
+def _extraction_budget(query: str, max_results: int) -> int:
+    if _is_complex_query(query):
+        return min(max(max_results, 4), 8)
+    return min(max(max_results // 2, 2), 4)
 
 
 def _extract_page_text(url: str, max_chars: int = 800) -> str:
@@ -57,23 +90,9 @@ def _extract_parallel(urls: list[str], max_chars: int = 800) -> dict[str, str]:
     return result
 
 
-def _is_visual_query(query: str) -> bool:
-    """Heuristic: does the user likely want images?"""
-    visual_words = [
-        "image", "picture", "photo", "diagram", "chart", "graph",
-        "screenshot", "logo", "icon", "illustration", "visual",
-        "how does .* look", "show me", "tasveer", "dikha",
-    ]
-    q = query.lower()
-    return any(re.search(pat, q) for pat in visual_words)
-
-
 def search_images(query: str, max_results: int = 4) -> list[dict[str, str]]:
-    """Search for images — DDG first, then Brave fallback."""
-    results = _ddg_image_search(query, max_results)
-    if not results:
-        results = _brave_image_search(query, max_results)
-    return results
+    """Search for images via DDG only (free path)."""
+    return _ddg_image_search(query, max_results)
 
 
 def _ddg_image_search(query: str, max_results: int) -> list[dict[str, str]]:
@@ -99,67 +118,62 @@ def _ddg_image_search(query: str, max_results: int) -> list[dict[str, str]]:
         return []
 
 
-def _brave_image_search(query: str, max_results: int) -> list[dict[str, str]]:
-    """Brave image search fallback."""
-    api_key = os.getenv("BRAVE_API_KEY", "")
-    if not api_key:
-        return []
-    try:
-        resp = requests.get(
-            "https://api.search.brave.com/res/v1/images/search",
-            params={"q": query, "count": max_results},
-            headers={"Accept": "application/json", "X-Subscription-Token": api_key},
-            timeout=5,
-        )
-        if not resp.ok:
-            return []
-        data = resp.json()
-        results: list[dict[str, str]] = []
-        for item in data.get("results", []):
-            img_url = item.get("properties", {}).get("url", "")
-            thumb = item.get("thumbnail", {}).get("src", "") or img_url
-            title = item.get("title", "")
-            source = item.get("url", "")
-            if img_url:
-                results.append({
-                    "image_url": img_url,
-                    "thumbnail": thumb,
-                    "title": title,
-                    "source_url": source,
-                })
-        return results[:max_results]
-    except Exception:
-        return []
-
-
 def retrieve_sources(query: str, max_results: int = 6) -> list[dict[str, Any]]:
-    """Search with multiple fallbacks: DDG → Brave → Google scrape → Wikipedia."""
-    # Try DuckDuckGo first
-    raw_results = _ddg_search(query, max_results)
+    """Search with multi-engine aggregation and quality-preserving dedupe.
+    
+    Runs DDG, LangSearch, and Serper in parallel for speed.
+    """
+    raw_results: list[dict[str, Any]] = []
+    raw_results.extend(_direct_fetch_sources(query))
 
-    # Fallback 1: Brave Search (if API key is set)
-    if not raw_results:
-        raw_results = _brave_search(query, max_results)
+    # Parallel search across all engines (DDG + LangSearch + Serper)
+    search_fns = [
+        ("ddg", lambda: _ddg_search(query, max_results)),
+        ("langsearch", lambda: _langsearch_search(query, max_results)),
+        ("serper", lambda: _serper_search(query, max_results)),
+    ]
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+            futures = {
+                pool.submit(fn): name for name, fn in search_fns
+            }
+            done, _ = concurrent.futures.wait(futures.keys(), timeout=12)
+            for future in done:
+                try:
+                    engine_results = future.result(timeout=1)
+                    if engine_results:
+                        raw_results.extend(engine_results)
+                except Exception:
+                    continue
+    except Exception as e:
+        print(f"[Credon] Parallel search error: {e}")
+        # Sequential fallback
+        raw_results.extend(_ddg_search(query, max_results))
 
-    # Fallback 2: Google scrape via SearXNG-style
     if not raw_results:
         raw_results = _google_scrape_search(query, max_results)
-
-    # Fallback 3: Wikipedia
     if not raw_results:
         return _wikipedia_fallback(query)
 
-    urls_to_extract = []
-    for item in raw_results[:4]:
+    merged_raw = _dedupe_raw_results(raw_results, cap=max(max_results * 3, 12))
+
+    urls_to_extract: list[str] = []
+    for item in merged_raw[:8]:
         url = item.get("href") or item.get("url") or ""
         if url:
             urls_to_extract.append(url)
 
-    enable_page_extraction = os.getenv("ENABLE_PAGE_EXTRACTION", "false").lower() == "true"
-    page_texts = _extract_parallel(urls_to_extract) if (enable_page_extraction and urls_to_extract) else {}
+    extraction_mode = _page_extraction_mode()
+    should_extract = (
+        extraction_mode == "full"
+        or (extraction_mode == "strategic" and _is_complex_query(query))
+    )
+    budget = _extraction_budget(query, max_results)
+    extract_targets = urls_to_extract[:budget]
+    page_texts = _extract_parallel(extract_targets) if (should_extract and extract_targets) else {}
 
     collected: list[dict[str, Any]] = []
-    for item in raw_results:
+    for item in merged_raw:
         title = item.get("title") or "Untitled"
         url = item.get("href") or item.get("url") or ""
         snippet = item.get("body") or ""
@@ -169,6 +183,49 @@ def retrieve_sources(query: str, max_results: int = 6) -> list[dict[str, Any]]:
         collected.append({"title": title, "url": url, "snippet": final_snippet})
 
     return collected[:max_results]
+
+
+def _dedupe_raw_results(raw_results: list[dict[str, Any]], cap: int) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in raw_results:
+        url = str(item.get("href") or item.get("url") or "").strip()
+        title = str(item.get("title") or "").strip()
+        if not url:
+            continue
+        key = url.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(
+            {
+                "title": title or url,
+                "href": url,
+                "body": str(item.get("body") or item.get("snippet") or "").strip(),
+            }
+        )
+        if len(deduped) >= cap:
+            break
+    return deduped
+
+
+def _direct_fetch_sources(query: str) -> list[dict[str, Any]]:
+    urls = re.findall(r"https?://[^\s)]+", query)
+    if not urls:
+        return []
+    pages = _extract_parallel(urls[:3], max_chars=700)
+    results: list[dict[str, Any]] = []
+    for url in urls[:3]:
+        snippet = pages.get(url, "").strip()
+        if snippet:
+            results.append(
+                {
+                    "title": f"Direct source: {url.split('/')[2] if '://' in url else url}",
+                    "href": url,
+                    "body": snippet,
+                }
+            )
+    return results
 
 
 def _ddg_search(query: str, max_results: int) -> list[dict[str, Any]]:
@@ -181,31 +238,73 @@ def _ddg_search(query: str, max_results: int) -> list[dict[str, Any]]:
         return []
 
 
-def _brave_search(query: str, max_results: int) -> list[dict[str, Any]]:
-    """Brave Search API fallback (requires BRAVE_API_KEY env var)."""
-    api_key = os.getenv("BRAVE_API_KEY", "")
+def _langsearch_search(query: str, max_results: int) -> list[dict[str, Any]]:
+    """LangSearch web search (optional, OpenAI-compatible style endpoint)."""
+    api_key = os.getenv("LANGSEARCH_API_KEY", "").strip()
     if not api_key:
         return []
     try:
-        resp = requests.get(
-            "https://api.search.brave.com/res/v1/web/search",
-            params={"q": query, "count": max_results},
-            headers={"Accept": "application/json", "X-Subscription-Token": api_key},
+        base_url = os.getenv("LANGSEARCH_BASE_URL", "https://api.langsearch.com/v1/web-search").strip()
+        resp = requests.post(
+            base_url,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            json={"query": query, "top_k": max_results},
             timeout=10,
         )
         if not resp.ok:
             return []
-        data = resp.json()
-        results = []
-        for item in data.get("web", {}).get("results", []):
+        payload = cast(dict[str, Any], resp.json())
+        raw_items = cast(list[Any], payload.get("results") or payload.get("data") or [])
+        results: list[dict[str, Any]] = []
+        for item in raw_items:
+            if not isinstance(item, dict):
+                continue
+            entry = cast(dict[str, Any], item)
             results.append({
-                "title": item.get("title", ""),
-                "href": item.get("url", ""),
-                "body": item.get("description", ""),
+                "title": str(entry.get("title", "")),
+                "href": str(entry.get("url", "") or entry.get("link", "")),
+                "body": str(entry.get("snippet", "") or entry.get("description", "")),
             })
         return results[:max_results]
     except Exception as e:
-        print(f"[Credon] Brave search failed: {e}")
+        print(f"[Credon] LangSearch failed: {e}")
+        return []
+
+
+def _serper_search(query: str, max_results: int) -> list[dict[str, Any]]:
+    """Serper Google API search fallback."""
+    api_key = os.getenv("SERPER_API_KEY", "").strip()
+    if not api_key:
+        return []
+    try:
+        resp = requests.post(
+            "https://google.serper.dev/search",
+            headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
+            data=json.dumps({"q": query, "num": max_results}),
+            timeout=10,
+        )
+        if not resp.ok:
+            return []
+        data = cast(dict[str, Any], resp.json())
+        results: list[dict[str, Any]] = []
+        for item in cast(list[Any], data.get("organic", [])):
+            if not isinstance(item, dict):
+                continue
+            entry = cast(dict[str, Any], item)
+            results.append(
+                {
+                    "title": str(entry.get("title", "")),
+                    "href": str(entry.get("link", "")),
+                    "body": str(entry.get("snippet", "")),
+                }
+            )
+        return results[:max_results]
+    except Exception as e:
+        print(f"[Credon] Serper search failed: {e}")
         return []
 
 

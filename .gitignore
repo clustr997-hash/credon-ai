@@ -2,6 +2,9 @@
 .env.local
 backend/secrets/
 *.log
+build.log
+DataAnalysisExpert/
+backend/data/chat_store.json
 
 # Python
 backend/.venv/

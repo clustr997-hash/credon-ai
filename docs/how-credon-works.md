@@ -11,8 +11,8 @@ This document explains Credon AI architecture, answer routing, memory behavior, 
    - Math query
    - General/web-grounded query
 3. Backend applies memory/profile resolution first when relevant.
-4. For web-grounded flow, backend retrieves multi-source evidence (DuckDuckGo-first, fallbacks enabled).
-5. Model routing picks the best available model (prefers available local Ollama models).
+4. For web-grounded flow, backend retrieves multi-source evidence (DDG + Serper + LangSearch + fallbacks).
+5. Model routing uses deterministic order: DeepSeek primary, Groq fallback, Ollama optional.
 6. Backend returns answer, confidence, sources, optional images, and latency.
 
 ## 2) Intent Differentiation
@@ -65,10 +65,12 @@ Credon uses `retrieve_sources(...)` with dynamic depth:
 
 Search strategy:
 
-1. DuckDuckGo (`ddgs`) primary
-2. Brave API fallback (if key configured)
-3. Google scrape fallback
-4. Wikipedia summary fallback
+1. Direct URL fetch (if query contains URLs)
+2. DuckDuckGo (`ddgs`)
+3. LangSearch API (if key configured)
+4. Serper API (if key configured)
+5. Google scrape fallback
+6. Wikipedia summary fallback
 
 Notes:
 
@@ -79,8 +81,9 @@ Notes:
 
 Credon chooses from available models at runtime.
 
-- Prefers available local Ollama models by task type.
-- Supports optional DeepSeek cloud model when `DEEPSEEK_API_KEY` is set.
+- `MODEL_RUNTIME_MODE=cloud`: DeepSeek → Groq → Credon Brain.
+- `MODEL_RUNTIME_MODE=auto`: Cloud-first when keys exist, otherwise Ollama/local.
+- `MODEL_RUNTIME_MODE=local`: Ollama-first, cloud as optional fallback.
 - If no model is available, Credon falls back to built-in brain/memory synthesis.
 
 ## 6) Frontend UX Features
@@ -101,11 +104,20 @@ Current UX includes:
 Root `.env` controls backend behavior:
 
 - `USE_LOCAL_MODEL=true`
+- `MODEL_RUNTIME_MODE=auto`
+- `USE_MODEL_GENERATION=true`
 - `USE_WEB_SEARCH=true`
 - `OLLAMA_BASE_URL=http://localhost:11434`
 - `OLLAMA_MODEL=qwen3:8b` (fallback default)
-- `DEEPSEEK_API_KEY=` (optional cloud)
+- `DEEPSEEK_API_KEY=`
 - `DEEPSEEK_BASE_URL=https://api.deepseek.com`
+- `DEEPSEEK_MODEL=deepseek-reasoner`
+- `GROQ_API_KEY=`
+- `GROQ_BASE_URL=https://api.groq.com/openai/v1`
+- `GROQ_MODEL=llama-3.3-70b-versatile`
+- `SERPER_API_KEY=`
+- `LANGSEARCH_API_KEY=`
+- `LANGSEARCH_BASE_URL=https://api.langsearch.com/v1/web-search`
 - `ENABLE_PAGE_EXTRACTION=false` (recommended for speed)
 
 ## 8) Runbook (Dev)

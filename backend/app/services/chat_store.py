@@ -100,7 +100,7 @@ def _firebase_client() -> Any | None:
 _load_local_store()
 
 
-def _save_local_message(user_id: str, session_id: str, role: str, text: str, entry: dict[str, str]) -> None:
+def _save_local_message(user_id: str, session_id: str, role: str, text: str, entry: dict[str, Any]) -> None:
     with _STORE_LOCK:
         user_sessions = _LOCAL_STORE.setdefault(user_id, {})
         user_sessions.setdefault(session_id, []).append(entry)
@@ -135,9 +135,27 @@ def _get_local_transcript(user_id: str, session_id: str) -> list[dict[str, str]]
         return list(_LOCAL_STORE.get(user_id, {}).get(session_id, []))
 
 
-def save_message(user_id: str, session_id: str, role: str, text: str) -> None:
+def save_message(
+    user_id: str,
+    session_id: str,
+    role: str,
+    text: str,
+    *,
+    thinking: str = "",
+    confidence: str = "",
+    sources: list[dict[str, str]] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
     timestamp = _now_iso()
-    entry = {"role": role, "text": text, "created_at": timestamp}
+    entry: dict[str, Any] = {"role": role, "text": text, "created_at": timestamp}
+    if thinking:
+        entry["thinking"] = thinking
+    if confidence:
+        entry["confidence"] = confidence
+    if sources:
+        entry["sources"] = sources
+    if metadata:
+        entry["metadata"] = metadata
 
     client = _firebase_client()
     if client:
@@ -212,7 +230,7 @@ def list_sessions(user_id: str) -> list[dict[str, str | int]]:
     return _list_local_sessions(user_id)
 
 
-def get_transcript(user_id: str, session_id: str) -> list[dict[str, str]]:
+def get_transcript(user_id: str, session_id: str) -> list[dict[str, Any]]:
     client = _firebase_client()
     if client:
         try:

@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
@@ -9,6 +9,7 @@ class ChatRequest(BaseModel):
     language: Literal["auto", "en", "hinglish"] = "auto"
     model: str | None = None  # optional model override
     use_web: bool = True
+    deep_think: bool = True
     regenerate_of: int | None = None
     reply_to: str | None = None
 
@@ -34,6 +35,7 @@ class ChatResponse(BaseModel):
     suggestions: list[str] = []
     thinking: str = ""
     latency_ms: int
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class FeedbackRequest(BaseModel):
@@ -47,6 +49,10 @@ class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     text: str
     created_at: str
+    thinking: str = ""
+    confidence: str = ""
+    sources: list[Source] = []
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ChatSessionSummary(BaseModel):

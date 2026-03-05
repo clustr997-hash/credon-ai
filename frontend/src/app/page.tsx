@@ -61,6 +61,15 @@ type Message = {
   thinkingStreaming?: boolean;
   replyTo?: string; // WhatsApp-style reply context
   attachments?: { type: "image" | "pdf"; url?: string; name: string }[];
+  evaluator?: {
+    input_sources?: number;
+    selected_sources?: number;
+    avg_score?: number;
+  };
+  metadata?: {
+    routing?: { selected_route?: string; reason?: string; score?: number };
+    evaluator?: Record<string, unknown>;
+  };
 };
 
 type PendingAttachment = {
@@ -237,7 +246,7 @@ function ProgressDots({ stage }: { stage: ThinkingStage }) {
 
   return (
     <div className="flex gap-3 items-start">
-      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shrink-0 overflow-hidden">
+      <div className="w-8 h-8 rounded-full bg-linear-to-br from-cyan-500 to-blue-600 flex items-center justify-center shrink-0 overflow-hidden">
         <CredonLogo size={22} animate />
       </div>
       <div className="bg-zinc-800/80 border border-zinc-700/40 rounded-2xl rounded-tl-md px-5 py-4 max-w-sm">
@@ -263,7 +272,7 @@ function ProgressDots({ stage }: { stage: ThinkingStage }) {
                 key={s}
                 className={`h-1 rounded-full transition-all duration-500 ${
                   idx <= current
-                    ? "w-8 bg-gradient-to-r from-cyan-400 to-blue-500"
+                    ? "w-8 bg-linear-to-r from-cyan-400 to-blue-500"
                     : "w-6 bg-zinc-700"
                 }`}
               />
@@ -278,7 +287,7 @@ function ProgressDots({ stage }: { stage: ThinkingStage }) {
 /* ─────────────────────────── Thinking Block (DeepSeek-style) ─────────────────────────── */
 
 function ThinkingBlock({ thinking, durationSec, streaming }: { thinking: string; durationSec?: number; streaming?: boolean }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(!streaming);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [liveSeconds, setLiveSeconds] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -287,7 +296,6 @@ function ThinkingBlock({ thinking, durationSec, streaming }: { thinking: string;
   useEffect(() => {
     if (streaming) {
       const start = Date.now();
-      setLiveSeconds(0);
       timerRef.current = setInterval(() => {
         setLiveSeconds(Math.round((Date.now() - start) / 1000));
       }, 500);
@@ -344,6 +352,94 @@ function ThinkingBlock({ thinking, durationSec, streaming }: { thinking: string;
   );
 }
 
+/* ─────────────────────────── Flow Timeline ─────────────────────────── */
+
+function FlowTimeline({ message }: { message: Message }) {
+  const [open, setOpen] = useState(false);
+  const route = message.metadata?.routing;
+  if (!route?.selected_route && !message.sources?.length && !message.confidence) return null;
+
+  const routeLabel: Record<string, string> = {
+    greeting_shortcut: "Greeting",
+    memory_shortcut: "Memory",
+    personal_fallback: "Personal",
+    realtime_shortcut: "Real-time",
+    instant_mode: "Instant",
+    credon_answer: "Brain",
+    credon_answer_stream: "Brain",
+    credon_answer_fallback: "Brain Fallback",
+    model_generation: "AI Model",
+    model_generation_stream: "AI Model",
+    followup_generation: "Follow-up",
+    error_recovery_stream: "Recovery",
+  };
+
+  const steps: { label: string; detail?: string; icon: string }[] = [];
+
+  // Step 1: Route
+  if (route?.selected_route) {
+    steps.push({ label: routeLabel[route.selected_route] || route.selected_route, detail: route.reason, icon: "route" });
+  }
+
+  // Step 2: Sources
+  if (message.sources && message.sources.length > 0) {
+    steps.push({ label: `${message.sources.length} source${message.sources.length > 1 ? "s" : ""}`, icon: "source" });
+  }
+
+  // Step 3: Evaluator
+  if (message.evaluator && (message.evaluator.input_sources ?? 0) > 0) {
+    steps.push({ label: `Evaluated ${message.evaluator.selected_sources}/${message.evaluator.input_sources}`, detail: message.evaluator.avg_score ? `quality ${message.evaluator.avg_score.toFixed(2)}` : undefined, icon: "eval" });
+  }
+
+  // Step 4: Thinking
+  if (message.thinking) {
+    steps.push({ label: `Thought${message.thinkDurationSec ? ` ${message.thinkDurationSec}s` : ""}`, icon: "think" });
+  }
+
+  // Step 5: Confidence
+  if (message.confidence) {
+    const confColor = message.confidence === "high" ? "text-emerald-400" : message.confidence === "medium" ? "text-amber-400" : "text-rose-400";
+    steps.push({ label: message.confidence, detail: "confidence", icon: confColor });
+  }
+
+  if (steps.length === 0) return null;
+
+  return (
+    <div className="mt-2">
+      <button type="button" onClick={() => setOpen(!open)} className="flex items-center gap-1.5 text-[11px] text-zinc-500 hover:text-zinc-300 transition group">
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
+        </svg>
+        <span>Flow</span>
+        <svg className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M19 9l-7 7-7-7" /></svg>
+      </button>
+      {open && (
+        <div className="mt-1.5 ml-1 flex flex-col gap-0">
+          {steps.map((step, i) => (
+            <div key={i} className="flex items-start gap-2 relative">
+              <div className="flex flex-col items-center">
+                <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
+                  step.icon === "route" ? "bg-cyan-500" :
+                  step.icon === "source" ? "bg-blue-500" :
+                  step.icon === "eval" ? "bg-amber-500" :
+                  step.icon === "think" ? "bg-purple-500" :
+                  step.icon.startsWith("text-") ? step.icon.replace("text-", "bg-") :
+                  "bg-zinc-600"
+                }`} />
+                {i < steps.length - 1 && <div className="w-px h-4 bg-zinc-700/50" />}
+              </div>
+              <div className="pb-1">
+                <span className="text-[11px] text-zinc-300">{step.label}</span>
+                {step.detail && <span className="text-[10px] text-zinc-500 ml-1.5">{step.detail}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─────────────────────────── Image Grid ─────────────────────────── */
 
 function ImageGrid({ images }: { images: ImageResult[] }) {
@@ -366,7 +462,7 @@ function ImageGrid({ images }: { images: ImageResult[] }) {
               unoptimized
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
             />
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+            <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/80 to-transparent p-2">
               <p className="text-[10px] text-white truncate">{img.title}</p>
             </div>
           </button>
@@ -399,37 +495,58 @@ function ImageGrid({ images }: { images: ImageResult[] }) {
 
 /* ─────────────────────────── Settings Modal ─────────────────────────── */
 
-function SettingsModal({ open, onClose, models, selectedModel, onModelChange }: {
-  open: boolean; onClose: () => void; models: ModelInfo[]; selectedModel: string; onModelChange: (id: string) => void;
+function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setDeepThink }: {
+  open: boolean; onClose: () => void; webSearch: boolean; setWebSearch: (v: boolean) => void; deepThink: boolean; setDeepThink: (v: boolean) => void;
 }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md mx-4 rounded-2xl border border-zinc-700/60 bg-zinc-900 shadow-2xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-          <h2 className="text-lg font-semibold text-white">Settings</h2>
+      <div className="modal-content w-full max-w-md mx-4 rounded-2xl border border-zinc-700/50 bg-[#111113] shadow-2xl shadow-black/50">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/50">
+          <h2 className="text-lg font-semibold text-white tracking-tight">Settings</h2>
           <button type="button" onClick={onClose} title="Close" className="text-zinc-400 hover:text-white transition p-1 rounded-lg hover:bg-zinc-800">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
         <div className="px-6 py-5 space-y-6">
+          {/* Model Info — no selection, internal routing */}
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-2">AI Model</label>
-            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-              {models.map((m) => (
-                <button key={m.id} type="button" onClick={() => onModelChange(m.id)}
-                  className={`w-full text-left rounded-xl px-4 py-3 border transition ${
-                    selectedModel === m.id ? "border-cyan-500/60 bg-cyan-500/10" : "border-zinc-700/40 bg-zinc-800/40 hover:bg-zinc-800/80"
-                  }`}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-white">{m.label}</span>
-                    {selectedModel === m.id && <span className="text-xs bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded-full">Active</span>}
-                  </div>
-                  <p className="text-xs text-zinc-500 mt-0.5">{m.description || m.provider}</p>
-                </button>
-              ))}
+            <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/5 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-linear-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0">C</div>
+                <div>
+                  <p className="text-sm font-semibold text-white">Credon Alpha 1</p>
+                  <p className="text-xs text-zinc-400">Multi-model AI with automatic routing &middot; Always picks the best model for your query</p>
+                </div>
+              </div>
             </div>
           </div>
+
+          {/* Web Search Toggle */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-zinc-200"><span className="text-base" role="img" aria-label="globe">🌐</span> Web Search</p>
+              <p className="text-xs text-zinc-500">Search the internet for up-to-date answers</p>
+            </div>
+            <button type="button" onClick={() => setWebSearch(!webSearch)} title="Toggle web search"
+              className={`w-11 h-6 rounded-full transition-colors relative ${webSearch ? "bg-cyan-500" : "bg-zinc-700"}`}>
+              <span className={`block w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${webSearch ? "translate-x-5.5" : "translate-x-0.5"}`} />
+            </button>
+          </div>
+
+          {/* Deep Think Toggle */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-zinc-200"><span className="text-base" role="img" aria-label="brain">🧠</span> Deep Think</p>
+              <p className="text-xs text-zinc-500">More thorough analysis (may take longer)</p>
+            </div>
+            <button type="button" onClick={() => setDeepThink(!deepThink)} title="Toggle deep think"
+              className={`w-11 h-6 rounded-full transition-colors relative ${deepThink ? "bg-purple-500" : "bg-zinc-700"}`}>
+              <span className={`block w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${deepThink ? "translate-x-5.5" : "translate-x-0.5"}`} />
+            </button>
+          </div>
+
           <div>
             <h3 className="text-sm font-medium text-zinc-300 mb-1">About</h3>
             <p className="text-xs text-zinc-500 leading-relaxed">
@@ -437,8 +554,8 @@ function SettingsModal({ open, onClose, models, selectedModel, onModelChange }: 
             </p>
           </div>
         </div>
-        <div className="px-6 py-4 border-t border-zinc-800 flex justify-end">
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm rounded-xl bg-cyan-600 text-white hover:bg-cyan-500 transition">Done</button>
+        <div className="px-6 py-4 border-t border-zinc-800/50 flex justify-end">
+          <button type="button" onClick={onClose} className="px-5 py-2.5 text-sm font-medium rounded-xl bg-linear-to-r from-cyan-500 to-blue-600 text-white hover:brightness-110 transition shadow-md shadow-cyan-500/15">Done</button>
         </div>
       </div>
     </div>
@@ -451,8 +568,8 @@ function PrivacyModal({ open, onClose }: { open: boolean; onClose: () => void })
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-lg mx-4 rounded-2xl border border-zinc-700/60 bg-zinc-900 shadow-2xl max-h-[85vh] flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 shrink-0">
+      <div className="modal-content w-full max-w-lg mx-4 rounded-2xl border border-zinc-700/50 bg-[#111113] shadow-2xl shadow-black/50 max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/50 shrink-0">
           <h2 className="text-lg font-semibold text-white">Privacy Policy</h2>
           <button type="button" onClick={onClose} title="Close" className="text-zinc-400 hover:text-white transition p-1 rounded-lg hover:bg-zinc-800">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -475,6 +592,197 @@ function PrivacyModal({ open, onClose }: { open: boolean; onClose: () => void })
 }
 
 /* ─────────────────────────── Auth Page ─────────────────────────── */
+
+const SUBJECTS = [
+  { value: "", label: "Auto-detect" },
+  { value: "physics", label: "Physics" },
+  { value: "mathematics", label: "Mathematics" },
+  { value: "chemistry", label: "Chemistry" },
+  { value: "biology", label: "Biology" },
+  { value: "computer_science", label: "Computer Science" },
+  { value: "engineering", label: "Engineering" },
+  { value: "economics", label: "Economics" },
+  { value: "history", label: "History" },
+  { value: "pharmacy", label: "Pharmacy" },
+  { value: "medical_science", label: "Medical Science" },
+  { value: "law", label: "Law" },
+  { value: "commerce", label: "Commerce" },
+  { value: "arts_humanities", label: "Arts & Humanities" },
+  { value: "environmental_science", label: "Environmental Science" },
+];
+
+const SOURCE_TYPES = [
+  { value: "note", label: "Notes" },
+  { value: "question_paper", label: "Question Paper" },
+  { value: "cheat_sheet", label: "Cheat Sheet" },
+  { value: "lecture", label: "Lecture" },
+];
+
+function KnowledgeUploadModal({ open, onClose, uid }: { open: boolean; onClose: () => void; uid: string }) {
+  const [tab, setTab] = useState<"text" | "pdf">("text");
+  const [title, setTitle] = useState("");
+  const [text, setText] = useState("");
+  const [subject, setSubject] = useState("");
+  const [tags, setTags] = useState("");
+  const [sourceType, setSourceType] = useState("note");
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const pdfRef = useRef<HTMLInputElement>(null);
+
+  const reset = () => { setTitle(""); setText(""); setSubject(""); setTags(""); setSourceType("note"); setPdfFile(null); setResult(null); };
+
+  const submitText = async () => {
+    if (!text.trim()) return;
+    setBusy(true); setResult(null);
+    try {
+      const resp = await fetch(`${API}/api/v1/ingest/text`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: uid,
+          text: text.trim(),
+          title: title.trim() || "untitled-note",
+          subject,
+          tags: tags.split(",").map(t => t.trim()).filter(Boolean),
+          source_type: sourceType,
+        }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        setResult({ ok: true, message: `Uploaded! ${data.chunks || 0} chunks stored. Subject: ${data.detected_subject || "auto"}` });
+        reset();
+      } else {
+        setResult({ ok: false, message: data.error || "Upload failed" });
+      }
+    } catch { setResult({ ok: false, message: "Network error" }); }
+    finally { setBusy(false); }
+  };
+
+  const submitPdf = async () => {
+    if (!pdfFile) return;
+    setBusy(true); setResult(null);
+    try {
+      const form = new FormData();
+      form.append("user_id", uid);
+      form.append("file", pdfFile);
+      form.append("subject", subject);
+      form.append("tags", tags);
+      form.append("source_type", sourceType);
+      // Keep PDF upload aligned with backend ingest contract.
+      const resp = await fetch(`${API}/api/v1/ingest/pdf`, { method: "POST", body: form });
+      const data = await resp.json();
+      if (data.ok) {
+        setResult({ ok: true, message: `Uploaded! ${data.chunks || 0} chunks stored. Subject: ${data.detected_subject || "auto"}` });
+        reset();
+      } else {
+        setResult({ ok: false, message: data.error || "Upload failed" });
+      }
+    } catch { setResult({ ok: false, message: "Network error" }); }
+    finally { setBusy(false); }
+  };
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-lg mx-4 rounded-2xl border border-zinc-700/60 bg-zinc-900 shadow-2xl max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 shrink-0">
+          <h2 className="text-lg font-semibold text-white">Upload Knowledge</h2>
+          <button type="button" onClick={() => { reset(); onClose(); }} title="Close" className="text-zinc-400 hover:text-white transition p-1 rounded-lg hover:bg-zinc-800">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        <div className="px-6 py-4 overflow-y-auto flex-1 space-y-4">
+          {/* Tabs */}
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setTab("text")}
+              className={`px-4 py-2 rounded-xl text-sm font-medium transition ${tab === "text" ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/40" : "bg-zinc-800/60 text-zinc-400 border border-zinc-700/40 hover:text-zinc-300"}`}>
+              Paste Text
+            </button>
+            <button type="button" onClick={() => setTab("pdf")}
+              className={`px-4 py-2 rounded-xl text-sm font-medium transition ${tab === "pdf" ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/40" : "bg-zinc-800/60 text-zinc-400 border border-zinc-700/40 hover:text-zinc-300"}`}>
+              Upload PDF
+            </button>
+          </div>
+
+          {/* Title */}
+          <div>
+            <label className="block text-xs font-medium text-zinc-400 mb-1">Title</label>
+            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Physics Ch-5 Notes"
+              className="w-full px-3 py-2 rounded-xl bg-zinc-800/60 border border-zinc-700/40 text-sm text-white placeholder:text-zinc-500 outline-none focus:border-cyan-500/50" />
+          </div>
+
+          {/* Subject + Source Type row */}
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-zinc-400 mb-1">Subject</label>
+              <select value={subject} onChange={e => setSubject(e.target.value)} title="Subject"
+                className="w-full px-3 py-2 rounded-xl bg-zinc-800/60 border border-zinc-700/40 text-sm text-white outline-none focus:border-cyan-500/50">
+                {SUBJECTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-zinc-400 mb-1">Type</label>
+              <select value={sourceType} onChange={e => setSourceType(e.target.value)} title="Source type"
+                className="w-full px-3 py-2 rounded-xl bg-zinc-800/60 border border-zinc-700/40 text-sm text-white outline-none focus:border-cyan-500/50">
+                {SOURCE_TYPES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Tags */}
+          <div>
+            <label className="block text-xs font-medium text-zinc-400 mb-1">Tags (comma-separated)</label>
+            <input value={tags} onChange={e => setTags(e.target.value)} placeholder="e.g. chapter-5, thermodynamics, exam-prep"
+              className="w-full px-3 py-2 rounded-xl bg-zinc-800/60 border border-zinc-700/40 text-sm text-white placeholder:text-zinc-500 outline-none focus:border-cyan-500/50" />
+          </div>
+
+          {/* Text input or PDF upload */}
+          {tab === "text" ? (
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1">Content</label>
+              <textarea value={text} onChange={e => setText(e.target.value)} rows={6}
+                placeholder="Paste your notes, question paper, cheat sheet, or lecture content here..."
+                className="w-full px-3 py-2 rounded-xl bg-zinc-800/60 border border-zinc-700/40 text-sm text-white placeholder:text-zinc-500 outline-none focus:border-cyan-500/50 resize-none" />
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1">PDF File</label>
+              <input ref={pdfRef} type="file" accept=".pdf" className="hidden" title="Upload PDF" aria-label="Upload PDF"
+                onChange={e => { if (e.target.files?.[0]) setPdfFile(e.target.files[0]); e.target.value = ""; }} />
+              <button type="button" onClick={() => pdfRef.current?.click()}
+                className="w-full px-4 py-6 rounded-xl border-2 border-dashed border-zinc-700/60 bg-zinc-800/30 hover:bg-zinc-800/50 transition text-sm text-zinc-400 hover:text-zinc-300">
+                {pdfFile ? (
+                  <span className="text-cyan-400">{pdfFile.name} ({(pdfFile.size / 1024).toFixed(0)} KB)</span>
+                ) : (
+                  <>Click to select a PDF file</>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Result message */}
+          {result && (
+            <div className={`px-4 py-3 rounded-xl text-sm ${result.ok ? "bg-green-500/10 text-green-400 border border-green-500/30" : "bg-red-500/10 text-red-400 border border-red-500/30"}`}>
+              {result.message}
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-zinc-800 shrink-0 flex items-center justify-between">
+          <p className="text-[11px] text-zinc-500">Subject is auto-detected if not selected</p>
+          <button type="button" disabled={busy || (tab === "text" ? !text.trim() : !pdfFile)} onClick={tab === "text" ? submitText : submitPdf}
+            className="px-5 py-2 text-sm rounded-xl bg-linear-to-r from-cyan-500 to-blue-600 text-white hover:brightness-110 transition disabled:opacity-40">
+            {busy ? "Uploading..." : "Upload"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────── Auth Page (original) ─────────────────────────── */
 
 function AuthPage({ onGuest }: { onGuest: () => void }) {
   const [tab, setTab] = useState<AuthTab>("signin");
@@ -516,10 +824,10 @@ function AuthPage({ onGuest }: { onGuest: () => void }) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a] px-4">
+    <div className="min-h-dvh flex items-center justify-center bg-[#09090b] px-4">
       <div className="w-full max-w-105">
         <div className="text-center mb-8">
-          <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center mb-4 shadow-lg shadow-cyan-500/20 overflow-hidden">
+          <div className="mx-auto w-16 h-16 rounded-2xl bg-linear-to-br from-cyan-500 to-blue-600 flex items-center justify-center mb-4 shadow-lg shadow-cyan-500/20 overflow-hidden">
             <CredonLogo size={40} />
           </div>
           <h1 className="text-3xl font-bold text-white tracking-tight">Credon AI</h1>
@@ -568,7 +876,7 @@ function AuthPage({ onGuest }: { onGuest: () => void }) {
             {tab === "signin" && <button type="button" onClick={() => switchTab("forgot")} className="text-sm text-cyan-400 hover:text-cyan-300 transition">Forgot password?</button>}
             {err && <p className="text-sm text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">{err}</p>}
             {ok && <p className="text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">{ok}</p>}
-            <button type="submit" disabled={busy} className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold hover:brightness-110 disabled:opacity-50 transition shadow-lg shadow-cyan-500/20">
+            <button type="submit" disabled={busy} className="w-full py-3 rounded-xl bg-linear-to-r from-cyan-500 to-blue-600 text-white font-semibold hover:brightness-110 disabled:opacity-50 transition shadow-lg shadow-cyan-500/20">
               {busy ? "Please wait\u2026" : tab === "signin" ? "Sign In" : tab === "signup" ? "Create Account" : "Send Reset Link"}
             </button>
           </form>
@@ -584,7 +892,7 @@ function AuthPage({ onGuest }: { onGuest: () => void }) {
             </>
           )}
         </div>
-        <button type="button" onClick={onGuest} className="mt-5 w-full text-center py-3 text-sm rounded-xl border border-zinc-700/50 bg-zinc-800/40 text-zinc-300 hover:text-white hover:bg-zinc-800 transition">
+        <button type="button" onClick={onGuest} className="mt-5 w-full text-center py-3.5 text-sm rounded-xl border border-zinc-700/50 bg-zinc-800/40 text-zinc-300 hover:text-white hover:bg-zinc-800 hover:border-zinc-600 transition-all">
           Continue without an account &rarr;
         </button>
       </div>
@@ -607,19 +915,30 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   const [currentSession, setCurrentSession] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [copied, setCopied] = useState<number | null>(null);
+  const [loginPrompt, setLoginPrompt] = useState<string | null>(null);
 
   /* ── Model & settings ── */
-  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [, setModels] = useState<ModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
+  const [knowledgeOpen, setKnowledgeOpen] = useState(false);
   const [useWeb, setUseWeb] = useState(true);
+  const [deepThink, setDeepThink] = useState(() => {
+    if (typeof window === "undefined") return true;
+    const stored = localStorage.getItem("credon-deep-think");
+    return stored == null ? true : stored === "1";
+  });
   const [replyTo, setReplyTo] = useState<{ text: string; index: number } | null>(null);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   /* ── Thinking state ── */
   const [thinkingStage, setThinkingStage] = useState<ThinkingStage>(null);
   const [thinkingStart, setThinkingStart] = useState<number>(0);
   const [liveThinking, setLiveThinking] = useState("");
+
+  /* ── Follow-up dismiss ── */
+  const [followUpsDismissed, setFollowUpsDismissed] = useState(false);
 
   /* ── File upload ── */
   const [attachedFiles, setAttachedFiles] = useState<PendingAttachment[]>([]);
@@ -649,6 +968,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
 
   /* Follow-up suggestions — prefer structured suggestions from backend */
   const followUps = useMemo(() => {
+    if (followUpsDismissed) return [];
     const lastMsg = messages[messages.length - 1];
     if (lastMsg?.role === "assistant" && !lastMsg.streaming && lastMsg.text !== GREET) {
       // Use structured suggestions from backend if available
@@ -659,7 +979,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       return extractFollowUps(lastMsg.text);
     }
     return [];
-  }, [messages]);
+  }, [messages, followUpsDismissed]);
 
   /* Auto-scroll */
   useEffect(() => {
@@ -710,11 +1030,6 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     })();
   }, []);
 
-  const handleModelChange = (id: string) => {
-    setSelectedModel(id);
-    if (typeof window !== "undefined") localStorage.setItem("credon-model", id);
-  };
-
   /* Load sessions */
   const loadSessions = useCallback(async () => {
     try {
@@ -761,6 +1076,10 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         setMessages(data.messages.map((m: any) => ({
           role: m.role, text: m.text,
           timestamp: m.created_at ? new Date(m.created_at).getTime() : Date.now(),
+          thinking: m.thinking || undefined,
+          confidence: m.confidence || undefined,
+          sources: m.sources?.length ? m.sources : undefined,
+          metadata: m.metadata || undefined,
         })));
       } catch { setMessages([{ role: "assistant", text: GREET, timestamp: Date.now() }]); }
     };
@@ -854,7 +1173,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       setUploadError(null);
       const failedFiles = await ingestAttachments(queuedFiles);
       if (failedFiles.length > 0) {
-        setUploadError(`Some files could not be ingested: ${failedFiles.slice(0, 2).join(", ")}${failedFiles.length > 2 ? "..." : ""}`);
+        setUploadError(`Could not fully process: ${failedFiles.slice(0, 2).map(f => f.split(':')[0]).join(", ")}${failedFiles.length > 2 ? "..." : ""}. Files were saved — text may be limited.`);
       }
       setUploadingFiles(false);
     }
@@ -873,6 +1192,11 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     }
 
     if (!isRegenerate) {
+      // If editing a previous message, remove everything from that point
+      if (editingIndex !== null) {
+        setMessages((prev) => prev.slice(0, editingIndex));
+        setEditingIndex(null);
+      }
       const userMsg: Message = {
         role: "user", text: q, timestamp: Date.now(),
         replyTo: replyContext || undefined,
@@ -894,6 +1218,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     setThinkingStage("searching");
     setThinkingStart(Date.now());
     setLiveThinking("");
+    setFollowUpsDismissed(false);
 
     const backendQuery = replyContext
       ? `${q}\n\n[Replying to previous answer]: ${replyContext.slice(0, 700)}`
@@ -913,6 +1238,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
           language: "auto",
           model: selectedModel || undefined,
           use_web: useWeb,
+          deep_think: deepThink,
           reply_to: replyContext || undefined,
         }),
         signal: controller.signal,
@@ -931,8 +1257,11 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       let accConfidence: string | undefined;
       let accThinking = "";
       let accSuggestions: string[] = [];
+      let accEvaluator: { input_sources?: number; selected_sources?: number; avg_score?: number } | undefined;
       let firstTokenReceived = false;
       let thinkingActive = false;
+      let thinkStartedAt = 0;
+      let accMetadata: Message["metadata"] | undefined;
 
       while (true) {
         const { value, done } = await reader.read();
@@ -956,6 +1285,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               setLiveThinking(accThinking);
             } else if (evt.type === "thinking_token") {
               // Word-by-word thinking stream from backend
+              if (!thinkStartedAt) thinkStartedAt = Date.now();
               thinkingActive = true;
               setThinkingStage(null); // Hide progress dots, show live thinking
               accThinking += evt.content ?? "";
@@ -1000,9 +1330,25 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 return updated;
               });
             } else if (evt.type === "done") {
-              const thinkDurationSec = Math.round((Date.now() - thinkingStart) / 1000);
+              const thinkDurationSec = thinkStartedAt
+                ? Math.round((Date.now() - thinkStartedAt) / 1000)
+                : Math.round((Date.now() - thinkingStart) / 1000);
               setThinkingStage(null);
               setLiveThinking("");
+
+              // Capture routing metadata for FlowTimeline
+              if (evt?.metadata?.routing) {
+                accMetadata = { ...accMetadata, routing: evt.metadata.routing };
+              }
+
+              const maybeEvaluator = evt?.metadata?.evaluator;
+              if (maybeEvaluator && typeof maybeEvaluator === "object") {
+                accEvaluator = {
+                  input_sources: Number(maybeEvaluator.input_sources ?? 0),
+                  selected_sources: Number(maybeEvaluator.selected_sources ?? 0),
+                  avg_score: Number(maybeEvaluator.avg_score ?? 0),
+                };
+              }
 
               // Grab suggestions from done event
               if (evt.suggestions && Array.isArray(evt.suggestions)) {
@@ -1029,6 +1375,8 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                       sources: accSources.length ? accSources : undefined,
                       confidence: accConfidence,
                       images: accImages.length ? accImages : undefined,
+                      evaluator: accEvaluator,
+                      metadata: accMetadata,
                     }];
                   });
                 }
@@ -1048,6 +1396,8 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                   thinking: accThinking || undefined,
                   thinkDurationSec,
                   suggestions: accSuggestions.length ? accSuggestions : undefined,
+                  evaluator: accEvaluator,
+                  metadata: accMetadata,
                 };
                 return updated;
               });
@@ -1072,6 +1422,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
             images: accImages.length ? accImages : undefined,
             thinking: accThinking || undefined,
             suggestions: accSuggestions.length ? accSuggestions : undefined,
+            evaluator: accEvaluator,
           };
           return updated;
         }
@@ -1083,13 +1434,55 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       if ((err as Error).name === "AbortError") return; // User stopped
       setThinkingStage(null);
       setLiveThinking("");
+
+      // Auto-retry once with sync (non-streaming) endpoint as fallback
       if (!isRegenerate) {
-        // Never show error messages — provide a helpful response instead
+        try {
+          const retryRes = await fetch(`${API}/api/v1/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: uid,
+              session_id: currentSession,
+              query: backendQuery,
+              language: "auto",
+              model: selectedModel || undefined,
+              use_web: true,
+              deep_think: false,
+            }),
+          });
+          if (retryRes.ok) {
+            const data = await retryRes.json();
+            if (data.answer && data.answer.length > 20) {
+              setMessages((prev) => [...prev, {
+                role: "assistant" as const,
+                text: stripSuggestionSection(data.answer),
+                sources: data.sources || [],
+                images: data.images || [],
+                suggestions: data.suggestions || [],
+                thinking: data.thinking || "",
+                confidence: data.confidence || "medium",
+                timestamp: Date.now(),
+              }]);
+              void loadSessions();
+              return;
+            }
+          }
+        } catch {
+          // Retry also failed — fall through to helpful message
+        }
+
+        // Final fallback: show a helpful message
         setMessages((prev) => [...prev, {
-          role: "assistant",
-          text: "I\u2019m having a moment \u2014 let me try a different approach! You can:\n\n- **Retry** your question (I\u2019ll try again)\n- Try enabling **web search** (globe icon) for source-based answers\n- Rephrase with more specific details\n\nI\u2019m always learning and improving! \uD83D\uDE80\n\n**You might also want to know:**\n- What can Credon AI do?\n- How does Credon AI work?\n- Try asking something else!",
-          confidence: "low", timestamp: Date.now(),
-          thinking: "Encountered a connection issue. Providing helpful guidance to the user instead of an error message.",
+          role: "assistant" as const,
+          text: "Hmm, I\u2019m having a brief connection hiccup \u2014 but no worries! Here\u2019s what you can do:\n\n" +
+            "1. **Tap \u201CSend\u201D again** \u2014 I\u2019ll retry with a different model\n" +
+            "2. **Turn on Web Search** for real-time answers\n" +
+            "3. **Simplify your question** if it\u2019s very complex\n\n" +
+            "I\u2019ll be back to full speed in a moment \u{1F680}",
+          confidence: "low",
+          timestamp: Date.now(),
+          suggestions: ["Try my question again", "Search the web instead", "Show me what you can do"],
         }]);
       }
     } finally {
@@ -1137,7 +1530,8 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     await send(prevUser.text, { regenerate: true });
   };
 
-  const editUserMessage = (text: string) => {
+  const editUserMessage = (index: number, text: string) => {
+    setEditingIndex(index);
     setQuery(text);
     inputRef.current?.focus();
   };
@@ -1165,28 +1559,24 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     return g;
   }, [sessions]);
 
-  const modelLabel = useMemo(() => {
-    const m = models.find((m) => m.id === selectedModel);
-    return m?.label ?? "Credon Alpha 1";
-  }, [models, selectedModel]);
-
   return (
-    <div className="h-screen flex bg-[#0a0a0a] text-white overflow-hidden">
+    <div className="h-dvh flex bg-[#09090b] text-white overflow-hidden">
       {sidebarOpen && <div className="fixed inset-0 bg-black/60 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} models={models} selectedModel={selectedModel} onModelChange={handleModelChange} />
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} webSearch={useWeb} setWebSearch={setUseWeb} deepThink={deepThink} setDeepThink={(v) => { setDeepThink(v); if (typeof window !== "undefined") localStorage.setItem("credon-deep-think", v ? "1" : "0"); }} />
       <PrivacyModal open={privacyOpen} onClose={() => setPrivacyOpen(false)} />
+      <KnowledgeUploadModal open={knowledgeOpen} onClose={() => setKnowledgeOpen(false)} uid={uid} />
 
       {/* Hidden file input */}
         <label htmlFor="chat-image-upload" className="sr-only">Attach image or PDF files</label>
         <input id="chat-image-upload" ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={handleFileSelect} aria-label="Attach image or PDF files" />
 
       {/* ─── Sidebar (DeepSeek-style) ─── */}
-      <aside className={`fixed md:static inset-y-0 left-0 z-40 w-[280px] bg-[#111111] border-r border-zinc-800/60 flex flex-col transition-transform duration-200 md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+      <aside className={`fixed md:static inset-y-0 left-0 z-40 w-70 bg-[#0f0f11] border-r border-zinc-800/50 flex flex-col transition-transform duration-200 ease-out md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         {/* Sidebar header — clean, just new chat */}
         <div className="h-14 flex items-center justify-between px-3 shrink-0 border-b border-zinc-800/40">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center overflow-hidden">
+            <div className="w-7 h-7 rounded-lg bg-linear-to-br from-cyan-500 to-blue-600 flex items-center justify-center overflow-hidden">
               <CredonLogo size={22} />
             </div>
             <span className="text-sm font-semibold text-white tracking-tight">Credon AI</span>
@@ -1237,7 +1627,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
           </div>
           <div className="p-3">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-xs font-bold shrink-0 shadow-lg shadow-cyan-500/10">{displayName[0]?.toUpperCase() ?? "G"}</div>
+              <div className="w-9 h-9 rounded-full bg-linear-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-xs font-bold shrink-0 shadow-lg shadow-cyan-500/10">{displayName[0]?.toUpperCase() ?? "G"}</div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-white font-medium truncate">{displayName}</p>
                 <p className="text-[11px] text-zinc-500">{isGuest ? "Guest mode" : "Signed in"}</p>
@@ -1253,7 +1643,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       {/* ─── Main ─── */}
       <main className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="h-14 border-b border-zinc-800/40 flex items-center px-3 sm:px-4 gap-2 sm:gap-3 shrink-0 bg-[#0a0a0a]/80 backdrop-blur-sm">
+        <header className="h-14 border-b border-zinc-800/30 flex items-center px-3 sm:px-4 gap-2 sm:gap-3 shrink-0 bg-[#09090b]/90 backdrop-blur-md">
           {/* Sidebar toggle — panel icon */}
           <button type="button" onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition" title="Toggle sidebar">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -1261,11 +1651,11 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               <path d="M9 3v18" />
             </svg>
           </button>
-          <span className="font-semibold tracking-tight text-sm sm:text-base">Credon AI</span>
+          <span className="font-semibold tracking-tight text-sm sm:text-base bg-linear-to-r from-white to-zinc-300 bg-clip-text text-transparent">Credon AI</span>
           <button type="button" onClick={() => setSettingsOpen(true)}
-            className="ml-auto flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 px-2 sm:px-3 py-1.5 rounded-lg border border-zinc-700/40 transition" title="Model">
-            <span className="hidden sm:inline">{modelLabel}</span>
-            <span className="sm:hidden">Model</span>
+            className="ml-auto flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 px-2 sm:px-3 py-1.5 rounded-lg border border-zinc-700/40 transition" title="Settings">
+            <span className="hidden sm:inline">Credon Alpha 1</span>
+            <span className="sm:hidden">Settings</span>
           </button>
         </header>
 
@@ -1273,35 +1663,35 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         <div className="flex-1 overflow-y-auto">
           {isEmptyChat ? (
             <div className="h-full flex flex-col items-center justify-center px-4 sm:px-6 -mt-10">
-              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center mb-4 sm:mb-5 shadow-lg shadow-cyan-500/15 overflow-hidden">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-linear-to-br from-cyan-500 to-blue-600 flex items-center justify-center mb-5 sm:mb-6 shadow-xl shadow-cyan-500/20 overflow-hidden">
                 <CredonLogo size={40} />
               </div>
-              <h2 className="text-xl sm:text-2xl font-semibold text-white mb-2 text-center">How can I help you today?</h2>
-              <p className="text-zinc-400 text-xs sm:text-sm mb-4 text-center max-w-md">
-                I can search the web, solve math, analyze images, write code, and think through complex topics.
+              <h2 className="welcome-title text-3xl sm:text-4xl md:text-5xl font-extrabold text-center tracking-tight mb-3 bg-linear-to-r from-white via-cyan-200 to-blue-400 bg-clip-text text-transparent leading-tight">How can I help you?</h2>
+              <p className="welcome-subtitle text-zinc-500 text-sm sm:text-base mb-8 text-center max-w-md leading-relaxed font-medium">
+                Search, reason, create, and solve — powered by multi-model AI.
               </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 w-full max-w-lg">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 w-full max-w-lg">
                 {SUGGESTIONS.map((s) => (
                   <button key={s} type="button" onClick={() => send(s)}
-                    className="text-left rounded-xl border border-zinc-800 bg-zinc-900/60 px-3 sm:px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800/80 hover:text-white hover:border-zinc-700 transition group">
+                    className="suggestion-chip text-left rounded-xl border border-zinc-800/80 bg-zinc-900/50 px-4 py-3.5 text-sm text-zinc-300 hover:bg-zinc-800/70 hover:text-white hover:border-cyan-500/30 transition-all group">
                     <span className="group-hover:text-cyan-300 transition">{s}</span>
                   </button>
                 ))}
               </div>
             </div>
           ) : (
-            <div className="max-w-3xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-5">
+            <div className="max-w-3xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-5">
               {messages.map((m, i) => (
-                <div key={i} className={`flex gap-3 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
+                <div key={i} className={`message-bubble flex gap-2.5 sm:gap-3 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
                   {/* Avatar */}
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 overflow-hidden ${
-                    m.role === "assistant" ? "bg-gradient-to-br from-cyan-500 to-blue-600" : "bg-zinc-700"
+                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 overflow-hidden ${
+                    m.role === "assistant" ? "bg-linear-to-br from-cyan-500 to-blue-600 shadow-md shadow-cyan-500/10" : "bg-zinc-700"
                   }`}>
-                    {m.role === "assistant" ? <CredonLogo size={22} /> : <span className="text-[11px] font-bold">{displayName[0]?.toUpperCase() ?? "U"}</span>}
+                    {m.role === "assistant" ? <CredonLogo size={22} /> : <span className="text-[10px] sm:text-[11px] font-bold">{displayName[0]?.toUpperCase() ?? "U"}</span>}
                   </div>
 
                   {/* Content */}
-                  <div className={`flex flex-col max-w-[85%] sm:max-w-[80%] ${m.role === "user" ? "items-end" : "items-start"}`}>
+                  <div className={`flex flex-col max-w-[88%] sm:max-w-[80%] min-w-0 ${m.role === "user" ? "items-end" : "items-start"}`}>
                     {/* Reply context (WhatsApp-style) */}
                     {m.replyTo && (
                       <div className="mb-1 rounded-lg bg-zinc-800/50 border-l-2 border-cyan-500/60 px-3 py-1.5 max-w-full">
@@ -1342,11 +1732,11 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                     {/* Bubble */}
                     <div className={`rounded-2xl px-4 py-3 ${
                       m.role === "user"
-                        ? "bg-cyan-600/90 text-white rounded-tr-md"
-                        : "bg-zinc-800/80 border border-zinc-700/40 rounded-tl-md"
+                        ? "bg-linear-to-br from-cyan-600 to-blue-600 text-white rounded-tr-md shadow-md shadow-cyan-500/10"
+                        : "bg-zinc-800/70 border border-zinc-700/30 rounded-tl-md"
                     }`}>
                       {m.role === "assistant" && m.text !== GREET ? (
-                        <div className="prose prose-invert prose-sm max-w-none text-[15px] leading-relaxed [&_pre]:bg-zinc-900 [&_pre]:border [&_pre]:border-zinc-700/40 [&_pre]:rounded-xl [&_pre]:p-3 [&_code]:text-cyan-300 [&_code]:text-[13px] [&_a]:text-cyan-400 [&_a]:underline [&_a]:underline-offset-2 [&_h1]:text-lg [&_h2]:text-base [&_h3]:text-sm [&_h1]:font-bold [&_h2]:font-semibold [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:my-1.5 [&_li]:my-0.5 [&_blockquote]:border-l-2 [&_blockquote]:border-cyan-500/40 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-zinc-400 [&_table]:border-collapse [&_th]:border [&_th]:border-zinc-700 [&_th]:px-3 [&_th]:py-1.5 [&_th]:bg-zinc-800 [&_td]:border [&_td]:border-zinc-700 [&_td]:px-3 [&_td]:py-1.5">
+                        <div className="prose prose-invert prose-sm max-w-none text-[14px] sm:text-[15px] leading-relaxed [&_pre]:bg-zinc-900/80 [&_pre]:border [&_pre]:border-zinc-700/30 [&_pre]:rounded-xl [&_pre]:p-3 [&_pre]:overflow-x-auto [&_code]:text-cyan-300 [&_code]:text-[13px] [&_a]:text-cyan-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-cyan-500/30 hover:[&_a]:decoration-cyan-500 [&_h1]:text-lg [&_h1]:tracking-tight [&_h2]:text-base [&_h2]:tracking-tight [&_h3]:text-sm [&_h1]:font-bold [&_h2]:font-semibold [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:my-1.5 [&_li]:my-0.5 [&_blockquote]:border-l-2 [&_blockquote]:border-cyan-500/40 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-zinc-400 [&_table]:border-collapse [&_th]:border [&_th]:border-zinc-700 [&_th]:px-3 [&_th]:py-1.5 [&_th]:bg-zinc-800 [&_td]:border [&_td]:border-zinc-700 [&_td]:px-3 [&_td]:py-1.5 [&_hr]:border-zinc-700/50 [&_strong]:text-zinc-100 [&_strong]:font-semibold">
                           <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                             {m.text || (m.streaming ? "\u200B" : "")}
                           </ReactMarkdown>
@@ -1378,6 +1768,19 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                       </div>
                     )}
 
+                    {/* Evaluator diagnostics */}
+                    {m.role === "assistant" && m.evaluator && (m.evaluator.input_sources ?? 0) > 0 && (
+                      <div className="mt-1 text-[11px] text-zinc-500">
+                        Evaluator selected {m.evaluator.selected_sources ?? 0}/{m.evaluator.input_sources ?? 0} sources
+                        {(m.evaluator.avg_score ?? 0) > 0 ? ` • quality ${Number(m.evaluator.avg_score ?? 0).toFixed(2)}` : ""}
+                      </div>
+                    )}
+
+                    {/* Flow timeline */}
+                    {m.role === "assistant" && !m.streaming && m.text !== GREET && (
+                      <FlowTimeline message={m} />
+                    )}
+
                     {/* Confidence */}
                     {m.role === "assistant" && m.confidence === "low" && m.text !== GREET && (
                       <p className="mt-1.5 text-[11px] text-zinc-500 flex items-center gap-1">
@@ -1389,7 +1792,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                     )}
 
                     {/* Actions row */}
-                    <div className={`flex items-center gap-1.5 mt-1.5 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
+                    <div className={`flex flex-wrap items-center gap-1.5 mt-1.5 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
                       <span className="text-[11px] text-zinc-600 mr-1">{fmtTime(m.timestamp)}</span>
 
                       {m.role === "assistant" && m.text !== GREET && !m.streaming && (
@@ -1400,10 +1803,10 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                               <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
                             </svg>
                           </button>
-                          <button type="button" onClick={() => quickRewrite(i, "tldr")} className="text-zinc-600 hover:text-zinc-200 transition p-1.5 rounded-lg hover:bg-zinc-800/60 text-[11px] font-medium" title="Summarize this answer">
+                          <button type="button" onClick={() => quickRewrite(i, "tldr")} className="hidden sm:inline-flex text-zinc-600 hover:text-zinc-200 transition p-1.5 rounded-lg hover:bg-zinc-800/60 text-[11px] font-medium" title="Summarize this answer">
                             TL;DR
                           </button>
-                          <button type="button" onClick={() => quickRewrite(i, "simple")} className="text-zinc-600 hover:text-zinc-200 transition p-1.5 rounded-lg hover:bg-zinc-800/60 text-[11px] font-medium" title="Make this simpler">
+                          <button type="button" onClick={() => quickRewrite(i, "simple")} className="hidden sm:inline-flex text-zinc-600 hover:text-zinc-200 transition p-1.5 rounded-lg hover:bg-zinc-800/60 text-[11px] font-medium" title="Make this simpler">
                             Simplify
                           </button>
                           {/* Regenerate */}
@@ -1446,7 +1849,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                             )}
                           </button>
-                          <button type="button" onClick={() => editUserMessage(m.text)} className="text-zinc-600 hover:text-zinc-300 transition p-1 rounded hover:bg-zinc-800/60" title="Edit">
+                          <button type="button" onClick={() => editUserMessage(i, m.text)} className="text-zinc-600 hover:text-zinc-300 transition p-1 rounded hover:bg-zinc-800/60" title="Edit">
                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M16.862 4.487l1.687-1.688a2.121 2.121 0 113 3L10.582 16.767a4.5 4.5 0 01-1.897 1.13L6 18l.103-2.685a4.5 4.5 0 011.13-1.897L16.862 4.487z" /></svg>
                           </button>
                         </>
@@ -1462,7 +1865,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               {/* Live chain-of-thought while generating — word by word */}
               {loading && !!liveThinking && (
                 <div className="flex gap-3 items-start">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shrink-0 overflow-hidden">
+                  <div className="w-8 h-8 rounded-full bg-linear-to-br from-cyan-500 to-blue-600 flex items-center justify-center shrink-0 overflow-hidden">
                     <CredonLogo size={22} />
                   </div>
                   <div className="max-w-2xl w-full">
@@ -1474,7 +1877,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               {/* Connecting dots (very brief, before first SSE event) */}
               {loading && !thinkingStage && !messages.some((m) => m.streaming) && (
                 <div className="flex gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shrink-0 overflow-hidden">
+                  <div className="w-8 h-8 rounded-full bg-linear-to-br from-cyan-500 to-blue-600 flex items-center justify-center shrink-0 overflow-hidden">
                     <CredonLogo size={22} animate />
                   </div>
                   <div className="bg-zinc-800/80 border border-zinc-700/40 rounded-2xl rounded-tl-md px-5 py-4">
@@ -1497,9 +1900,14 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
 
         {/* Follow-ups */}
         {followUps.length > 0 && !loading && (
-          <div className="border-t border-zinc-800/30 bg-[#0a0a0a]/60">
-            <div className="max-w-3xl mx-auto px-3 sm:px-4 py-2 sm:py-3">
-              <p className="text-[11px] text-zinc-500 mb-1.5 font-medium">You might also want to know:</p>
+          <div className="border-t border-zinc-800/30 bg-[#09090b]/60 backdrop-blur-sm">
+            <div className="max-w-3xl mx-auto px-3 sm:px-6 py-2 sm:py-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[11px] text-zinc-500 font-medium">You might also want to know:</p>
+                <button type="button" onClick={() => setFollowUpsDismissed(true)} className="text-zinc-600 hover:text-zinc-300 transition" title="Dismiss suggestions">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
               <div className="flex flex-col sm:flex-row flex-wrap gap-1.5 sm:gap-2">
                 {followUps.map((s, i) => (
                   <button key={i} type="button" onClick={() => send(s)}
@@ -1513,9 +1921,36 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
           </div>
         )}
 
+        {/* ─── Login prompt banner ─── */}
+        {loginPrompt && (
+          <div className="border-t border-cyan-500/20 bg-cyan-500/5 px-4 py-3 flex items-center justify-between gap-3">
+            <p className="text-sm text-zinc-300">
+              {loginPrompt === "deep-think" ? "Sign in to use DeepThink mode" : "Sign in to upload knowledge"}
+            </p>
+            <div className="flex items-center gap-2 shrink-0">
+              <button type="button" onClick={() => setLoginPrompt(null)} className="text-xs text-zinc-500 hover:text-zinc-300 transition px-2 py-1 rounded-lg hover:bg-zinc-800/60">Dismiss</button>
+              <button type="button" onClick={onSignOut} className="text-xs font-medium text-black bg-cyan-400 hover:bg-cyan-300 px-3 py-1.5 rounded-lg transition">Sign In</button>
+            </div>
+          </div>
+        )}
+
         {/* ─── Input Area ─── */}
-        <div className="border-t border-zinc-800/40 p-2 sm:p-4 bg-[#0a0a0a]/80 backdrop-blur-sm">
+        <div className="border-t border-zinc-800/30 p-2 sm:p-4 bg-[#09090b]/90 backdrop-blur-md">
           <form onSubmit={onSubmit} className="max-w-3xl mx-auto">
+            {/* Editing indicator */}
+            {editingIndex !== null && (
+              <div className="mb-2 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2">
+                <svg className="w-4 h-4 text-amber-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M16.862 4.487l1.687-1.688a2.121 2.121 0 113 3L10.582 16.767a4.5 4.5 0 01-1.897 1.13L6 18l.103-2.685a4.5 4.5 0 011.13-1.897L16.862 4.487z" /></svg>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] text-amber-400 font-medium">Editing message</p>
+                  <p className="text-xs text-zinc-400 truncate">Messages after this point will be replaced</p>
+                </div>
+                <button type="button" onClick={() => { setEditingIndex(null); setQuery(""); }} className="text-zinc-500 hover:text-white transition shrink-0" title="Cancel edit">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+            )}
+
             {/* Reply context chip */}
             {replyTo && (
               <div className="mb-2 flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/5 px-3 py-2">
@@ -1555,7 +1990,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               <p className="mb-2 text-[11px] text-amber-300">{uploadError}</p>
             )}
 
-            <div className="flex gap-2 items-end bg-zinc-900/80 border border-zinc-700/60 rounded-2xl px-3 py-2 focus-within:border-cyan-500/40 transition shadow-lg shadow-black/20">
+            <div className="flex gap-1.5 sm:gap-2 items-end bg-zinc-900/80 border border-zinc-700/50 rounded-2xl px-2 sm:px-3 py-2 focus-within:border-cyan-500/40 focus-within:shadow-cyan-500/5 transition-all shadow-lg shadow-black/20">
               {/* Attach file button */}
               <button type="button" onClick={() => fileInputRef.current?.click()}
                 className="p-2 text-zinc-500 hover:text-zinc-300 transition rounded-lg hover:bg-zinc-800/60 shrink-0" title="Attach image or PDF">
@@ -1573,6 +2008,48 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 </svg>
               </button>
 
+              {/* Deep think toggle — guests see sign-in prompt */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (isGuest) {
+                    setLoginPrompt("deep-think");
+                    return;
+                  }
+                  setDeepThink((prev) => {
+                    const next = !prev;
+                    if (typeof window !== "undefined") {
+                      localStorage.setItem("credon-deep-think", next ? "1" : "0");
+                    }
+                    return next;
+                  });
+                }}
+                className={`hidden sm:flex p-2 rounded-lg transition shrink-0 ${deepThink ? "text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
+                title={isGuest ? "Sign in to use DeepThink" : deepThink ? "DeepThink ON" : "DeepThink OFF"}
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
+                </svg>
+              </button>
+
+              {/* Upload knowledge button — guests see sign-in prompt */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (isGuest) {
+                    setLoginPrompt("knowledge");
+                    return;
+                  }
+                  setKnowledgeOpen(true);
+                }}
+                className="hidden sm:flex p-2 rounded-lg transition shrink-0 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-500/10"
+                title={isGuest ? "Sign in to upload knowledge" : "Upload notes, papers, cheat sheets"}
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+                </svg>
+              </button>
+
               {/* Textarea */}
               <textarea
                 ref={inputRef}
@@ -1581,7 +2058,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 onKeyDown={handleKeyDown}
                 placeholder="Message Credon AI&#8230;"
                 rows={1}
-                className="flex-1 bg-transparent py-2.5 outline-none text-[15px] placeholder:text-zinc-500 resize-none max-h-[150px]"
+                className="flex-1 bg-transparent py-2.5 outline-none text-[14px] sm:text-[15px] placeholder:text-zinc-500 resize-none max-h-37.5 leading-relaxed"
               />
 
               {/* Send / Stop button */}
@@ -1592,7 +2069,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 </button>
               ) : (
                 <button type="submit" disabled={(!query.trim() && attachedFiles.length === 0) || uploadingFiles}
-                  className="w-9 h-9 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 flex items-center justify-center disabled:opacity-30 transition hover:brightness-110 shrink-0 mb-0.5" title="Send">
+                  className="w-9 h-9 rounded-xl bg-linear-to-r from-cyan-500 to-blue-600 flex items-center justify-center disabled:opacity-30 transition hover:brightness-110 shrink-0 mb-0.5" title="Send">
                   <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
                   </svg>
@@ -1600,7 +2077,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               )}
             </div>
             {uploadingFiles && <p className="text-center text-[11px] text-cyan-300 mt-1.5 sm:mt-2">Indexing attachments for OCR and retrieval...</p>}
-            <p className="text-center text-[10px] sm:text-[11px] text-zinc-600 mt-1.5 sm:mt-2">Credon AI can make mistakes. Verify important information.</p>
+            <p className="text-center text-[10px] sm:text-[11px] text-zinc-600 mt-1.5 sm:mt-2 select-none">Credon AI can make mistakes. Verify important information.</p>
           </form>
         </div>
       </main>

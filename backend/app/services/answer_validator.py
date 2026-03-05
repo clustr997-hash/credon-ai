@@ -11,7 +11,6 @@ Multi-parameter cross-check before presenting answer to user:
 from __future__ import annotations
 
 import re
-from difflib import SequenceMatcher  # noqa: F401 – kept for future use
 from typing import Any
 
 

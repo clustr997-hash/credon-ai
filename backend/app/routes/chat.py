@@ -1,8 +1,9 @@
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
-from typing import Literal, cast
+from typing import Any, Iterator, Literal, cast
 import re
 import json as _json
+import logging
 from app.models.schemas import (
     ChatMessage,
     ChatRequest,
@@ -43,6 +44,7 @@ from app.utils.language import detect_language
 from time import perf_counter
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _public_model() -> dict[str, str | bool]:
@@ -68,6 +70,127 @@ def _is_greeting(query: str) -> bool:
     return any(re.search(p, q) for p in greeting_patterns)
 
 
+def _is_intro_query(query: str) -> bool:
+    q = query.strip().lower()
+    patterns = [
+        r"^what can you do\??$",
+        r"^who are you\??$",
+        r"^what is this\??$",
+        r"^what are you\??$",
+    ]
+    return any(re.search(p, q) for p in patterns)
+
+
+def _greeting_response(query: str, language: Literal["en", "hinglish"]) -> str | None:
+    if _is_greeting(query):
+        if language == "hinglish":
+            return "Hey! 👋 Main Credon AI hoon. Aap kya explore karna chahte ho aaj?"
+        return "Hey! 👋 I’m Credon AI. What would you like to explore today?"
+
+    if _is_intro_query(query):
+        if language == "hinglish":
+            return (
+                "Main Credon AI hoon — main web research, concepts explain, coding help, math solve, aur documents/images analyze kar sakta hoon. "
+                "Aap koi bhi specific question bhejo, main step-by-step help karunga."
+            )
+        return (
+            "I’m Credon AI — I can do web research, explain concepts, help with coding, solve math, and analyze documents/images. "
+            "Ask any specific question and I’ll help step by step."
+        )
+
+    return None
+
+
+def _is_realtime_query(query: str) -> bool:
+    """Detect queries about current time, date, day, or live info."""
+    q = query.strip().lower()
+    realtime_patterns = [
+        r"\bwhat\s+(is\s+)?(the\s+)?(current\s+)?time\b",
+        r"\bwhat\s+time\s+is\s+it\b",
+        r"\bwhat\s+(is\s+)?today\b",
+        r"\bwhat\s+(day|date)\s+(is\s+)?(it\s+)?today\b",
+        r"\bwhat\s+is\s+(the\s+)?(current\s+)?date\b",
+        r"\bwhich\s+day\s+is\s+(it\s+)?today\b",
+        r"\b(tell|give)\s+me\s+(the\s+)?(time|date|day)\b",
+        r"\bcurrent\s+(time|date|day)\b",
+        r"\btoday'?s?\s+(date|day)\b",
+        r"\btime\s+(now|right\s+now)\b",
+        r"\bdate\s+today\b",
+        r"\bwhat\s+is\s+time\s+now\b",
+        r"\bwhat\s+day\s+of\s+the\s+week\b",
+        r"\bdin\s+kya\s+hai\b",
+        r"\bkya\s+(time|samay|din|date)\b",
+        r"\baaj\s+(kya|kaun)\s+(din|date|day)\b",
+        r"\babhi\s+(kya\s+)?(time|samay)\b",
+    ]
+    return any(re.search(p, q) for p in realtime_patterns)
+
+
+def _realtime_response(query: str, language: str) -> str:
+    """Generate real-time response for time/date/day queries using system clock."""
+    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+
+    q = query.lower()
+    _location_tz: dict[str, tuple[str, str]] = {
+        "india": ("Asia/Kolkata", "India (IST, UTC+5:30)"),
+        "pune": ("Asia/Kolkata", "Pune, India (IST)"),
+        "mumbai": ("Asia/Kolkata", "Mumbai, India (IST)"),
+        "delhi": ("Asia/Kolkata", "Delhi, India (IST)"),
+        "kolkata": ("Asia/Kolkata", "Kolkata, India (IST)"),
+        "chennai": ("Asia/Kolkata", "Chennai, India (IST)"),
+        "bangalore": ("Asia/Kolkata", "Bangalore, India (IST)"),
+        "hyderabad": ("Asia/Kolkata", "Hyderabad, India (IST)"),
+        "new york": ("America/New_York", "New York (EST/EDT)"),
+        "london": ("Europe/London", "London (GMT/BST)"),
+        "tokyo": ("Asia/Tokyo", "Tokyo (JST, UTC+9)"),
+        "sydney": ("Australia/Sydney", "Sydney (AEST/AEDT)"),
+        "dubai": ("Asia/Dubai", "Dubai (GST, UTC+4)"),
+        "singapore": ("Asia/Singapore", "Singapore (SGT, UTC+8)"),
+        "los angeles": ("America/Los_Angeles", "Los Angeles (PST/PDT)"),
+        "pakistan": ("Asia/Karachi", "Pakistan (PKT, UTC+5)"),
+        "nepal": ("Asia/Kathmandu", "Nepal (NPT, UTC+5:45)"),
+        "bangladesh": ("Asia/Dhaka", "Bangladesh (BST, UTC+6)"),
+    }
+
+    tz_key = "Asia/Kolkata"
+    location_label = "India (IST, UTC+5:30)"
+    for loc, (tz_name, label) in _location_tz.items():
+        if loc in q:
+            tz_key = tz_name
+            location_label = label
+            break
+
+    try:
+        import zoneinfo
+        tz = zoneinfo.ZoneInfo(tz_key)
+    except Exception:
+        tz = _tz(_td(hours=5, minutes=30))
+
+    now = _dt.now(_tz.utc).astimezone(tz)
+    time_str = now.strftime("%I:%M %p")
+    date_str = now.strftime("%B %d, %Y")
+    day_str = now.strftime("%A")
+
+    if language == "hinglish":
+        return (
+            f"**Abhi ka time aur date ({location_label}):**\n\n"
+            f"- \u23f0 **Time:** {time_str}\n"
+            f"- \U0001f4c5 **Date:** {date_str}\n"
+            f"- \U0001f4c6 **Day:** {day_str}\n\n"
+            f"Kisi aur city ka time chahiye? Bas poochho! "
+            f"Jaise: \"Tokyo ka time kya hai?\""
+        )
+
+    return (
+        f"**Current Time & Date ({location_label}):**\n\n"
+        f"- \u23f0 **Time:** {time_str}\n"
+        f"- \U0001f4c5 **Date:** {date_str}\n"
+        f"- \U0001f4c6 **Day:** {day_str}\n\n"
+        f"Need the time for a different location? Just ask! "
+        f"For example: \"What is the time in Tokyo?\""
+    )
+
+
 def _is_simple_query(query: str) -> bool:
     q = query.strip().lower()
     if _is_greeting(q):
@@ -81,6 +204,66 @@ def _is_simple_query(query: str) -> bool:
     if len(q.split()) <= 4:
         return True
     return False
+
+
+def _is_profile_recall_query(query: str) -> bool:
+    q = query.strip().lower()
+    patterns = [
+        r"who am i", r"what is my name", r"my name is",
+        r"remember my", r"you know me", r"what did i tell you about",
+    ]
+    return any(re.search(p, q) for p in patterns)
+
+
+def _is_arithmetic_query(query: str) -> bool:
+    q = query.strip().lower()
+    if re.search(r"\b(what is|calculate|compute|solve)\b", q):
+        q = re.sub(r"\b(what is|calculate|compute|solve|equals|=|\?)\b", " ", q)
+    return bool(re.fullmatch(r"[\d\s\+\-\*/\(\)\.]+", q.strip())) and any(
+        op in q for op in "+-*/"
+    )
+
+
+def _query_complexity_features(query: str) -> dict[str, float]:
+    words = query.split()
+    word_count = len(words)
+    length_score = min(word_count / 25.0, 1.0)
+    entities = re.findall(r"\b([A-Z][a-z]+|\d{4}|\d+%?)\b", query)
+    entity_score = min(len(entities) / 6.0, 1.0)
+    intent_markers = len(re.findall(r"\b(compare|analy[sz]e|why|how|explain|trade-?off|strategy)\b", query.lower()))
+    intent_score = min(intent_markers / 3.0, 1.0)
+    complexity = min(1.0, (length_score * 0.45) + (entity_score * 0.25) + (intent_score * 0.30))
+    return {
+        "word_count": float(word_count),
+        "length_score": length_score,
+        "entity_score": entity_score,
+        "intent_score": intent_score,
+        "complexity": complexity,
+    }
+
+
+def _retrieval_evidence_quality(sources: list[dict[str, str]]) -> dict[str, float]:
+    source_count = len(sources)
+    source_score = min(source_count / 4.0, 1.0)
+    snippet_lengths = [len((s.get("snippet") or s.get("content") or "").strip()) for s in sources]
+    snippet_quality = min((sum(min(length, 240) for length in snippet_lengths) / (max(len(snippet_lengths), 1) * 240.0)), 1.0)
+    evidence_score = (source_score * 0.6) + (snippet_quality * 0.4)
+    return {
+        "source_count": float(source_count),
+        "source_score": source_score,
+        "snippet_quality": snippet_quality,
+        "evidence_score": evidence_score,
+    }
+
+
+def _routing_intent(query: str) -> str:
+    if _is_greeting(query):
+        return "greeting"
+    if _is_arithmetic_query(query):
+        return "arithmetic"
+    if _is_profile_recall_query(query):
+        return "profile_recall"
+    return "general"
 
 
 def _is_math_query(query: str) -> bool:
@@ -114,9 +297,52 @@ def _web_result_budget(query: str) -> int:
 
 
 def _should_try_brain_first(query: str) -> bool:
-    if _is_simple_query(query) or _is_math_query(query):
-        return True
-    return len(query.strip().split()) <= 14
+    return _routing_intent(query) in {"greeting", "arithmetic", "profile_recall"}
+
+
+def _routing_score(
+    query: str,
+    sources: list[dict[str, str]],
+    has_model: bool,
+    use_web: bool,
+) -> tuple[float, str, dict[str, object]]:
+    intent = _routing_intent(query)
+    complexity = _query_complexity_features(query)
+    evidence = _retrieval_evidence_quality(sources)
+    latency_budget_score = 1.0 if len(query.split()) <= 8 else 0.7 if len(query.split()) <= 20 else 0.4
+    model_score = 1.0 if has_model else 0.35
+    deterministic_boost = 1.0 if intent in {"greeting", "arithmetic", "profile_recall"} else 0.0
+    score = (
+        (deterministic_boost * 0.42)
+        + ((1.0 - complexity["complexity"]) * 0.28)
+        + (evidence["evidence_score"] * 0.16)
+        + (latency_budget_score * 0.08)
+        + ((1.0 - model_score) * 0.06)
+    )
+    if use_web and intent == "general":
+        score -= 0.08
+    score = max(0.0, min(score, 1.0))
+    reason = "deterministic_intent_confident" if score >= 0.78 and deterministic_boost else "model_generation_required"
+    diagnostics: dict[str, object] = {
+        "intent": intent,
+        "complexity": complexity,
+        "evidence": evidence,
+        "model_available": has_model,
+        "latency_budget_score": latency_budget_score,
+        "score": round(score, 4),
+        "reason": reason,
+    }
+    return score, reason, diagnostics
+
+
+def _log_routing(route: str, reason: str, score: float, diagnostics: dict[str, object]) -> None:
+    logger.info(
+        "routing_decision route=%s reason=%s score=%.4f diagnostics=%s",
+        route,
+        reason,
+        score,
+        diagnostics,
+    )
 
 
 def _has_available_model() -> bool:
@@ -153,16 +379,16 @@ def _choose_internal_model(query: str, use_web: bool) -> str:
             if candidate in local:
                 return candidate
         # Fallback to cloud models
-        for candidate in ["deepseek-chat"]:
+        for candidate in ["deepseek-reasoner", "deepseek-chat", "groq:llama-3.3-70b-versatile"]:
             if candidate in cloud:
                 return candidate
         return candidates[0]
 
     if _is_simple_query(query):
-        return pick(["qwen3:4b", "deepseek-r1:1.5b", "qwen3:8b", "deepseek-r1:8b"])
+        return pick(["qwen3:4b", "deepseek-r1:1.5b", "qwen3:8b", "deepseek-r1:8b", "deepseek-chat", "groq:llama-3.3-70b-versatile"])
     if _is_math_query(query):
-        return pick(["qwen3:8b", "deepseek-r1:8b", "deepseek-r1:1.5b", "qwen3:4b"])
-    return pick(["qwen3:8b", "deepseek-r1:8b", "deepseek-r1:1.5b", "qwen3:4b"])
+        return pick(["qwen3:8b", "deepseek-r1:8b", "deepseek-reasoner", "deepseek-chat", "groq:deepseek-r1-distill-llama-70b", "qwen3:4b"])
+    return pick(["qwen3:8b", "deepseek-r1:8b", "deepseek-reasoner", "deepseek-chat", "groq:llama-3.3-70b-versatile", "qwen3:4b"])
 
 
 def _is_visual_query_local(query: str) -> bool:
@@ -198,6 +424,85 @@ def _merge_sources(primary: list[dict[str, str]], secondary: list[dict[str, str]
         seen.add(key)
         merged.append(item)
     return merged
+
+
+def _query_source_overlap_score(query: str, source: dict[str, str]) -> float:
+    def _domain_score(url: str) -> float:
+        u = (url or "").lower()
+        if u.startswith("credon://knowledge/"):
+            return 0.95
+        if any(token in u for token in ["wikipedia.org", ".edu", ".gov", ".ac."]):
+            return 0.9
+        if any(token in u for token in ["arxiv.org", "nature.com", "sciencedirect.com", "ieee.org"]):
+            return 0.88
+        if any(token in u for token in ["medium.com", "quora.com", "reddit.com"]):
+            return 0.62
+        if u.startswith("http://") or u.startswith("https://"):
+            return 0.74
+        return 0.5
+
+    query_words = set(re.findall(r"\w{4,}", query.lower()))
+    combined = f"{source.get('title', '')} {source.get('snippet', '')}"
+    source_words = set(re.findall(r"\w{4,}", combined.lower()))
+    if not query_words or not source_words:
+        return 0.0
+
+    overlap = len(query_words & source_words) / max(len(query_words), 1)
+    snippet = source.get("snippet", "")
+    title = source.get("title", "")
+    url = source.get("url", "")
+
+    snippet_quality = min(len(snippet) / 320.0, 1.0)
+    title_quality = min(len(title) / 80.0, 1.0)
+    domain_quality = _domain_score(url)
+    # Penalize snippets dominated by symbols/noise.
+    noise_chars = len(re.findall(r"[^a-zA-Z0-9\s\.,:\-\(\)\[\]/]", snippet))
+    noise_ratio = noise_chars / max(len(snippet), 1)
+    noise_penalty = min(noise_ratio * 0.3, 0.2)
+
+    base = (
+        (overlap * 0.5)
+        + (snippet_quality * 0.2)
+        + (title_quality * 0.1)
+        + (domain_quality * 0.2)
+    )
+    return max(0.0, min(1.0, base - noise_penalty))
+
+
+def _evaluate_sources(query: str, sources: list[dict[str, str]], keep: int = 8) -> tuple[list[dict[str, str]], dict[str, float | int]]:
+    if not sources:
+        return [], {
+            "input_sources": 0,
+            "selected_sources": 0,
+            "avg_score": 0.0,
+            "min_selected_score": 0.0,
+            "dropped_low_quality": 0,
+        }
+
+    scored: list[tuple[float, dict[str, str]]] = []
+    for source in sources:
+        score = _query_source_overlap_score(query, source)
+        scored.append((score, source))
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    quality_threshold = 0.12 if len(scored) >= 4 else 0.08
+    selected = [item[1] for item in scored[:keep] if item[0] >= quality_threshold]
+    if not selected:
+        selected = [item[1] for item in scored[: min(keep, len(scored))]]
+
+    top_scores = [item[0] for item in scored[: min(keep, len(scored))]]
+    avg_score = sum(top_scores) / max(len(top_scores), 1)
+    min_selected_score = min(top_scores[: len(selected)]) if selected else 0.0
+    dropped_low_quality = sum(1 for item in scored[:keep] if item[0] < quality_threshold)
+
+    diagnostics: dict[str, float | int] = {
+        "input_sources": len(sources),
+        "selected_sources": len(selected),
+        "avg_score": round(avg_score, 4),
+        "min_selected_score": round(float(min_selected_score), 4),
+        "dropped_low_quality": dropped_low_quality,
+    }
+    return selected, diagnostics
 
 
 def _extract_reply_context(query: str, reply_to: str | None) -> tuple[str, str, bool]:
@@ -259,42 +564,25 @@ def _is_numbered_followup(query: str) -> tuple[bool, int]:
 
 
 def _resolve_numbered_followup(
-    number: int, transcript: list[dict[str, str]]
+    number: int, transcript: list[dict[str, Any]]
 ) -> str | None:
-    """Extract the Nth suggestion from the last assistant message."""
+    """Extract the Nth suggestion from the last assistant message.
+    Checks stored metadata suggestions first, then falls back to text extraction."""
     for item in reversed(transcript):
         if item.get("role") == "assistant":
-            text = item.get("text", "")
+            # Check stored suggestions in metadata first
+            meta = item.get("metadata")
+            if isinstance(meta, dict):
+                stored = meta.get("suggestions")  # type: ignore[union-attr]
+                if isinstance(stored, list) and 1 <= number <= len(stored):  # type: ignore[arg-type]
+                    return str(stored[number - 1])  # type: ignore[arg-type]
+            # Fallback: extract from text
+            text: str = item.get("text", "")
             suggestions = extract_suggestions(text)
             if 1 <= number <= len(suggestions):
                 return suggestions[number - 1]
             break
     return None
-
-
-def _smart_source_ratio(query: str, use_web: bool) -> dict[str, float]:
-    """Determine the ideal mixing ratio for different sources.
-
-    Returns weights (sum = 1.0) for: web_search, model, brain.
-    Default for complex queries: 60% web, 25% model, 15% brain.
-    """
-    q = query.lower().strip()
-    words = len(q.split())
-
-    if _is_greeting(q):
-        return {"web_search": 0.0, "model": 0.0, "brain": 1.0}
-    if _is_math_query(q):
-        return {"web_search": 0.0, "model": 0.85, "brain": 0.15}
-    if not use_web:
-        return {"web_search": 0.0, "model": 0.70, "brain": 0.30}
-    # Simple factual question
-    if words <= 6:
-        return {"web_search": 0.50, "model": 0.30, "brain": 0.20}
-    # Medium complexity
-    if words <= 15:
-        return {"web_search": 0.60, "model": 0.25, "brain": 0.15}
-    # Complex / research queries
-    return {"web_search": 0.65, "model": 0.25, "brain": 0.10}
 
 
 def _apply_cross_check(
@@ -316,6 +604,46 @@ def _apply_cross_check(
     return answer, report["confidence"] if report["confidence"] != confidence else confidence
 
 
+def _maybe_prefer_brain_answer(
+    query: str,
+    model_answer: str,
+    sources: list[dict[str, str]],
+    target_language: str,
+    thinking: str,
+    model_used: str,
+) -> tuple[str, str]:
+    """Arbitrate between model answer and brain synthesis using validator metrics.
+
+    Returns (chosen_answer, chosen_source) where chosen_source is "model" or "brain".
+    """
+    model_report = validate_answer(query, model_answer, sources, thinking, model_used)
+    brain_candidate = credon_answer(query, sources=sources or None, target_language=target_language)
+    if not brain_candidate:
+        return model_answer, "model"
+
+    brain_answer = _clean_answer(brain_candidate)
+    brain_report = validate_answer(query, brain_answer, sources, "", "credon-brain")
+
+    model_score = (
+        (0.45 * float(model_report.get("relevancy_score", 0.0)))
+        + (0.45 * float(model_report.get("source_coverage", 0.0)))
+        + (0.10 if bool(model_report.get("valid")) else 0.0)
+    )
+    brain_score = (
+        (0.45 * float(brain_report.get("relevancy_score", 0.0)))
+        + (0.45 * float(brain_report.get("source_coverage", 0.0)))
+        + (0.10 if bool(brain_report.get("valid")) else 0.0)
+    )
+
+    prefer_brain = False
+    if brain_report.get("confidence") == "high" and model_report.get("confidence") != "high":
+        prefer_brain = True
+    elif brain_score >= model_score + 0.08:
+        prefer_brain = True
+
+    return (brain_answer, "brain") if prefer_brain else (model_answer, "model")
+
+
 def _latest_assistant_context(transcript: list[dict[str, str]]) -> str:
     for item in reversed(transcript):
         if item.get("role") == "assistant":
@@ -329,21 +657,10 @@ def _latest_assistant_context(transcript: list[dict[str, str]]) -> str:
 
 @router.get("/models")
 def get_models() -> dict[str, object]:
-    """Return all available models including Ollama local + cloud."""
-    all_models = list_available_models()
-    public = [_public_model()]
-    for m in all_models:
-        if m.get("available"):
-            public.append({
-                "id": m["id"],
-                "label": m.get("label", m["id"]),
-                "provider": m.get("provider", "ollama"),
-                "description": m.get("description", ""),
-                "default": False,
-                "available": True,
-            })
+    """Return only the public Credon Alpha 1 model.
+    All model selection and orchestration happens internally."""
     return {
-        "models": public,
+        "models": [_public_model()],
         "default": "credon-alpha-1",
     }
 
@@ -391,6 +708,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
             sources=[],
             images=[],
             latency_ms=elapsed,
+            metadata={"routing": {"selected_route": "attachment_guard", "reason": "missing_attachment_bytes", "score": 1.0}},
         )
 
     if followup_mode and reply_context:
@@ -411,6 +729,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
             sources=[],
             images=[],
             latency_ms=elapsed,
+            metadata={"routing": {"selected_route": "followup_generation", "reason": "contextual_followup", "score": 1.0}},
         )
 
     memory_answer = memory_based_answer(cleaned_query, transcript, target_language)
@@ -423,6 +742,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
             confidence="high",
             sources=[],
             latency_ms=elapsed,
+            metadata={"routing": {"selected_route": "memory_shortcut", "reason": "memory_match", "score": 1.0}},
         )
 
     # Personal profile questions should not trigger web search.
@@ -437,31 +757,89 @@ def chat(payload: ChatRequest) -> ChatResponse:
             sources=[],
             images=[],
             latency_ms=elapsed,
+            metadata={"routing": {"selected_route": "personal_fallback", "reason": "profile_query", "score": 1.0}},
         )
 
-    # Greeting short-circuit: ALWAYS use Brain for greetings, never web search
-    if _is_greeting(cleaned_query):
-        brain_answer = credon_answer(cleaned_query, target_language=target_language)
-        if brain_answer:
-            save_message(payload.user_id, payload.session_id, "assistant", brain_answer)
-            learn_from_conversation(cleaned_query, brain_answer, "high")
-            elapsed = int((perf_counter() - start) * 1000)
-            return ChatResponse(
-                answer=brain_answer,
-                language=target_language,
-                confidence="high",
-                sources=[],
-                images=[],
-                latency_ms=elapsed,
-            )
+    # Real-time queries (time, date, day) — answered instantly from system clock
+    if _is_realtime_query(cleaned_query):
+        realtime_reply = _realtime_response(cleaned_query, target_language)
+        save_message(payload.user_id, payload.session_id, "assistant", realtime_reply)
+        elapsed = int((perf_counter() - start) * 1000)
+        return ChatResponse(
+            answer=realtime_reply,
+            language=target_language,
+            confidence="high",
+            sources=[],
+            images=[],
+            suggestions=[],
+            thinking="Real-time query — answered from system clock.",
+            latency_ms=elapsed,
+            metadata={"routing": {"selected_route": "realtime_shortcut", "reason": "realtime_query", "score": 1.0}},
+        )
 
-    # Ultra-fast path: Credon Brain self-answer for simple/math/offline queries
-    quick_route = (_should_try_brain_first(cleaned_query) and not payload.use_web) or not payload.use_web
+    greeting_reply = _greeting_response(cleaned_query, target_language)
+    if greeting_reply:
+        save_message(payload.user_id, payload.session_id, "assistant", greeting_reply)
+        elapsed = int((perf_counter() - start) * 1000)
+        return ChatResponse(
+            answer=greeting_reply,
+            language=target_language,
+            confidence="high",
+            sources=[],
+            images=[],
+            suggestions=[],
+            thinking="",
+            latency_ms=elapsed,
+            metadata={"routing": {"selected_route": "greeting_shortcut", "reason": "simple_greeting_or_intro", "score": 1.0}},
+        )
+
+    instant_mode = (not payload.use_web) and (not payload.deep_think)
+    if instant_mode:
+        chosen_model = payload.model or _choose_internal_model(cleaned_query, False)
+        fast_answer = credon_answer(cleaned_query, sources=None, target_language=target_language)
+        if not fast_answer:
+            fast_answer = generate_grounded_answer(
+                cleaned_query,
+                [],
+                target_language,
+                model=chosen_model,
+                thinking="",
+            )
+        answer = _clean_answer(fast_answer)
+        suggestions = extract_suggestions(answer)
+        answer = trim_answer_suggestions(answer)
+        save_message(payload.user_id, payload.session_id, "assistant", answer)
+        learn_from_conversation(cleaned_query, answer, "high")
+        elapsed = int((perf_counter() - start) * 1000)
+        return ChatResponse(
+            answer=answer,
+            language=target_language,
+            confidence="high",
+            sources=[],
+            images=[],
+            suggestions=suggestions,
+            thinking="",
+            latency_ms=elapsed,
+            metadata={"routing": {"selected_route": "instant_mode", "reason": "web_off_deepthink_off", "score": 1.0}},
+        )
+
+    has_model = _has_available_model()
+
+    quick_knowledge = retrieve_knowledge_context(payload.user_id, cleaned_query, top_k=3) if not _is_greeting(cleaned_query) else []
+    if quick_knowledge:
+        quick_knowledge, _ = _evaluate_sources(cleaned_query, quick_knowledge, keep=3)
+    quick_score, quick_reason, quick_diagnostics = _routing_score(
+        cleaned_query,
+        quick_knowledge,
+        has_model=has_model,
+        use_web=payload.use_web,
+    )
+    quick_route = _should_try_brain_first(cleaned_query) and quick_score >= 0.78
+
     if quick_route:
-        quick_knowledge = retrieve_knowledge_context(payload.user_id, cleaned_query, top_k=3)
+        _log_routing("credon_answer", quick_reason, quick_score, quick_diagnostics)
         brain_answer = credon_answer(cleaned_query, sources=quick_knowledge or None, target_language=target_language)
         if brain_answer:
-            thinking = credon_think(cleaned_query, sources=quick_knowledge or None)
             answer = _clean_answer(brain_answer)
             save_message(payload.user_id, payload.session_id, "assistant", answer)
             learn_from_conversation(cleaned_query, answer, "high")
@@ -473,37 +851,19 @@ def chat(payload: ChatRequest) -> ChatResponse:
                 sources=[Source(title=item["title"], url=item["url"]) for item in quick_knowledge],
                 images=[],
                 latency_ms=elapsed,
+                metadata={"routing": {"selected_route": "credon_answer", **quick_diagnostics}},
             )
-        # If Brain does not have a direct answer, use fast web retrieval + Brain synthesis
-        if payload.use_web:
-            quick_results = retrieve_sources(cleaned_query, max_results=min(10, _web_result_budget(cleaned_query)))
-            web_brain_answer = credon_answer(
-                cleaned_query,
-                sources=quick_results or None,
-                target_language=target_language,
-            )
-            if web_brain_answer:
-                confidence = "high" if len(quick_results) >= 3 else "medium" if quick_results else "low"
-                answer = _clean_answer(web_brain_answer)
-                save_message(payload.user_id, payload.session_id, "assistant", answer)
-                learn_from_conversation(cleaned_query, answer, confidence)
-                elapsed = int((perf_counter() - start) * 1000)
-                return ChatResponse(
-                    answer=answer,
-                    language=target_language,
-                    confidence=confidence,
-                    sources=[Source(title=item["title"], url=item["url"]) for item in quick_results],
-                    images=[],
-                    latency_ms=elapsed,
-                )
 
-    use_web = payload.use_web and not is_personal_query(cleaned_query) and not followup_mode
-    has_model = _has_available_model()
+    _log_routing("model_generation", quick_reason, quick_score, quick_diagnostics)
+
+    retrieval_allowed = not _is_greeting(cleaned_query)
+    use_web = payload.use_web and retrieval_allowed and not is_personal_query(cleaned_query) and not followup_mode
     chosen_model = payload.model or _choose_internal_model(cleaned_query, use_web)
 
-    knowledge_results = retrieve_knowledge_context(payload.user_id, cleaned_query, top_k=4)
+    knowledge_results = retrieve_knowledge_context(payload.user_id, cleaned_query, top_k=4) if retrieval_allowed else []
     web_results = retrieve_sources(cleaned_query, max_results=_web_result_budget(cleaned_query)) if use_web else []
-    results = _merge_sources(knowledge_results, web_results)
+    merged_results = _merge_sources(knowledge_results, web_results)
+    results, eval_diag = _evaluate_sources(cleaned_query, merged_results)
 
     if len(results) >= 4:
         confidence = "high"
@@ -526,18 +886,35 @@ def chat(payload: ChatRequest) -> ChatResponse:
                 sources=[Source(title=item["title"], url=item["url"]) for item in results],
                 images=[],
                 latency_ms=elapsed,
+                metadata={
+                    "routing": {
+                        "selected_route": "credon_answer_fallback",
+                        "score": round(quick_score, 4),
+                        "reason": "model_unavailable",
+                    },
+                    "evaluator": eval_diag,
+                },
             )
 
     # Thinking step
-    thinking = think_about_sources(cleaned_query, results, model=chosen_model)
+    thinking = think_about_sources(cleaned_query, results, model=chosen_model) if payload.deep_think else ""
 
-    answer = generate_grounded_answer(
+    raw_model_answer = generate_grounded_answer(
         cleaned_query, results, target_language,
         model=chosen_model, thinking=thinking,
     )
-    answer = _clean_answer(answer)
+    model_answer = _clean_answer(raw_model_answer)
 
-    # Extract suggestions + trim from body
+    answer, arbitration_source = _maybe_prefer_brain_answer(
+        cleaned_query,
+        model_answer,
+        results,
+        target_language,
+        thinking,
+        chosen_model,
+    )
+
+    # Extract suggestions + trim from selected answer
     suggestions = extract_suggestions(answer)
     answer = trim_answer_suggestions(answer)
 
@@ -546,7 +923,21 @@ def chat(payload: ChatRequest) -> ChatResponse:
         cleaned_query, answer, results, thinking, chosen_model, confidence
     )
 
-    save_message(payload.user_id, payload.session_id, "assistant", answer)
+    sources_payload = [{"title": item["title"], "url": item["url"]} for item in results]
+    route_meta = {
+        "routing": {
+            "selected_route": "model_generation",
+            "score": round(quick_score, 4),
+            "reason": quick_reason,
+        },
+        "answer_arbitration": {"chosen": arbitration_source},
+        "evaluator": eval_diag,
+    }
+    save_message(
+        payload.user_id, payload.session_id, "assistant", answer,
+        thinking=thinking, confidence=confidence,
+        sources=sources_payload, metadata={**route_meta, "suggestions": suggestions},
+    )
     # Self-learning: save this Q&A so Credon gets smarter
     learn_from_conversation(cleaned_query, answer, confidence)
 
@@ -567,6 +958,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
         suggestions=suggestions,
         thinking=thinking,
         latency_ms=elapsed,
+        metadata=route_meta,
     )
 
 
@@ -610,7 +1002,7 @@ def chat_stream(payload: ChatRequest):
 
         def _attachment_events():
             yield f"data: {_json.dumps({'type': 'token', 'content': attachment_message})}\n\n"
-            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed})}\n\n"
+            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed, 'metadata': {'routing': {'selected_route': 'attachment_guard_stream', 'reason': 'missing_attachment_bytes', 'score': 1.0}}})}\n\n"
 
         return StreamingResponse(_attachment_events(), media_type="text/event-stream")
 
@@ -629,7 +1021,7 @@ def chat_stream(payload: ChatRequest):
 
         def _followup_events():
             yield f"data: {_json.dumps({'type': 'token', 'content': answer_text})}\n\n"
-            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed})}\n\n"
+            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed, 'metadata': {'routing': {'selected_route': 'followup_generation_stream', 'reason': 'contextual_followup', 'score': 1.0}}})}\n\n"
 
         return StreamingResponse(_followup_events(), media_type="text/event-stream")
 
@@ -641,7 +1033,7 @@ def chat_stream(payload: ChatRequest):
 
         def _mem_events():
             yield f"data: {_json.dumps({'type': 'token', 'content': memory_answer})}\n\n"
-            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed})}\n\n"
+            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed, 'metadata': {'routing': {'selected_route': 'memory_shortcut_stream', 'reason': 'memory_match', 'score': 1.0}}})}\n\n"
 
         return StreamingResponse(_mem_events(), media_type="text/event-stream")
 
@@ -652,36 +1044,86 @@ def chat_stream(payload: ChatRequest):
 
         def _personal_events():
             yield f"data: {_json.dumps({'type': 'token', 'content': personal_fallback})}\n\n"
-            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed})}\n\n"
+            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed, 'metadata': {'routing': {'selected_route': 'personal_fallback_stream', 'reason': 'profile_query', 'score': 1.0}}})}\n\n"
 
         return StreamingResponse(_personal_events(), media_type="text/event-stream")
 
-    # Greeting short-circuit: ALWAYS use Brain for greetings, never web search
-    if _is_greeting(cleaned_query):
-        brain_answer = credon_answer(cleaned_query, target_language=target_language)
-        if brain_answer:
-            save_message(payload.user_id, payload.session_id, "assistant", brain_answer)
-            learn_from_conversation(cleaned_query, brain_answer, "high")
-            elapsed = int((perf_counter() - start) * 1000)
+    # Real-time queries (time, date, day) — instant from system clock
+    if _is_realtime_query(cleaned_query):
+        realtime_reply = _realtime_response(cleaned_query, target_language)
+        save_message(payload.user_id, payload.session_id, "assistant", realtime_reply)
+        elapsed = int((perf_counter() - start) * 1000)
 
-            def _greeting_events():
-                yield f"data: {_json.dumps({'type': 'token', 'content': brain_answer})}\n\n"
-                yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed})}\n\n"
+        def _realtime_events():
+            yield f"data: {_json.dumps({'type': 'thinking', 'content': 'Real-time query detected — using system clock.'})}\n\n"
+            yield f"data: {_json.dumps({'type': 'thinking_done', 'content': 'Real-time query detected — using system clock.'})}\n\n"
+            yield f"data: {_json.dumps({'type': 'token', 'content': realtime_reply})}\n\n"
+            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'suggestions': [], 'latency_ms': elapsed, 'metadata': {'routing': {'selected_route': 'realtime_shortcut_stream'}}})}\n\n"
 
-            return StreamingResponse(_greeting_events(), media_type="text/event-stream")
+        return StreamingResponse(_realtime_events(), media_type="text/event-stream")
 
-    # Ultra-fast streaming path: Credon Brain self-answer for simple/math/offline queries
-    quick_route = (_should_try_brain_first(cleaned_query) and not payload.use_web) or not payload.use_web
+    greeting_reply = _greeting_response(cleaned_query, target_language)
+    if greeting_reply:
+        save_message(payload.user_id, payload.session_id, "assistant", greeting_reply)
+        elapsed = int((perf_counter() - start) * 1000)
+
+        def _greeting_events():
+            yield f"data: {_json.dumps({'type': 'token', 'content': greeting_reply})}\n\n"
+            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'suggestions': [], 'thinking': '', 'latency_ms': elapsed, 'metadata': {'routing': {'selected_route': 'greeting_shortcut_stream', 'reason': 'simple_greeting_or_intro', 'score': 1.0}}})}\n\n"
+
+        return StreamingResponse(_greeting_events(), media_type="text/event-stream")
+
+    instant_mode = (not payload.use_web) and (not payload.deep_think)
+    if instant_mode:
+        chosen_model = payload.model or _choose_internal_model(cleaned_query, False)
+        fast_answer = credon_answer(cleaned_query, sources=None, target_language=target_language)
+        if not fast_answer:
+            fast_answer = generate_grounded_answer(
+                cleaned_query,
+                [],
+                target_language,
+                model=chosen_model,
+                thinking="",
+            )
+        answer_text = _clean_answer(fast_answer)
+        suggestions = extract_suggestions(answer_text)
+        answer_text = trim_answer_suggestions(answer_text)
+        save_message(payload.user_id, payload.session_id, "assistant", answer_text)
+        learn_from_conversation(cleaned_query, answer_text, "high")
+        elapsed = int((perf_counter() - start) * 1000)
+
+        def _instant_events():
+            yield f"data: {_json.dumps({'type': 'token', 'content': answer_text})}\n\n"
+            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'suggestions': suggestions, 'latency_ms': elapsed, 'metadata': {'routing': {'selected_route': 'instant_mode_stream', 'reason': 'web_off_deepthink_off', 'score': 1.0}}})}\n\n"
+
+        return StreamingResponse(_instant_events(), media_type="text/event-stream")
+
+    has_model = _has_available_model()
+
+    quick_knowledge = retrieve_knowledge_context(payload.user_id, cleaned_query, top_k=3) if not _is_greeting(cleaned_query) else []
+    if quick_knowledge:
+        quick_knowledge, _ = _evaluate_sources(cleaned_query, quick_knowledge, keep=3)
+    quick_score, quick_reason, quick_diagnostics = _routing_score(
+        cleaned_query,
+        quick_knowledge,
+        has_model=has_model,
+        use_web=payload.use_web,
+    )
+    quick_route = _should_try_brain_first(cleaned_query) and quick_score >= 0.78
     if quick_route:
-        quick_knowledge = retrieve_knowledge_context(payload.user_id, cleaned_query, top_k=3)
+        _log_routing("credon_answer_stream", quick_reason, quick_score, quick_diagnostics)
         brain_answer = credon_answer(cleaned_query, sources=quick_knowledge or None, target_language=target_language)
         if brain_answer:
-            thinking = credon_think(cleaned_query, sources=quick_knowledge or None)
+            thinking = credon_think(cleaned_query, sources=quick_knowledge or None) if payload.deep_think else ""
             answer_text = _clean_answer(brain_answer)
-            save_message(payload.user_id, payload.session_id, "assistant", answer_text)
+            source_payload = [{"title": s["title"], "url": s["url"]} for s in quick_knowledge]
+            save_message(
+                payload.user_id, payload.session_id, "assistant", answer_text,
+                thinking=thinking, confidence="high",
+                sources=source_payload,
+            )
             learn_from_conversation(cleaned_query, answer_text, "high")
             elapsed = int((perf_counter() - start) * 1000)
-            source_payload = [{"title": s["title"], "url": s["url"]} for s in quick_knowledge]
 
             def _brain_events():
                 yield f"data: {_json.dumps({'type': 'status', 'stage': 'thinking', 'message': 'Evaluating intent and context...'})}\n\n"
@@ -690,49 +1132,47 @@ def chat_stream(payload: ChatRequest):
                 if source_payload:
                     yield f"data: {_json.dumps({'type': 'sources', 'sources': source_payload, 'confidence': 'high', 'images': []})}\n\n"
                 yield f"data: {_json.dumps({'type': 'token', 'content': answer_text})}\n\n"
-                yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': source_payload, 'images': [], 'latency_ms': elapsed})}\n\n"
+                yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': source_payload, 'images': [], 'latency_ms': elapsed, 'metadata': {'routing': {'selected_route': 'credon_answer_stream', **quick_diagnostics}}})}\n\n"
 
             return StreamingResponse(_brain_events(), media_type="text/event-stream")
+    _log_routing("model_generation_stream", quick_reason, quick_score, quick_diagnostics)
 
-        if payload.use_web:
-            quick_results = retrieve_sources(cleaned_query, max_results=min(10, _web_result_budget(cleaned_query)))
-            web_brain_answer = credon_answer(
-                cleaned_query,
-                sources=quick_results or None,
-                target_language=target_language,
-            )
-            if web_brain_answer:
-                confidence = "high" if len(quick_results) >= 3 else "medium" if quick_results else "low"
-                thinking = credon_think(cleaned_query, sources=quick_results or None)
-                answer_text = _clean_answer(web_brain_answer)
-                save_message(payload.user_id, payload.session_id, "assistant", answer_text)
-                learn_from_conversation(cleaned_query, answer_text, confidence)
-                elapsed = int((perf_counter() - start) * 1000)
-
-                def _brain_web_events():
-                    yield f"data: {_json.dumps({'type': 'status', 'stage': 'searching', 'message': 'Searching knowledge sources...'})}\n\n"
-                    if thinking:
-                        yield f"data: {_json.dumps({'type': 'thinking', 'content': thinking})}\n\n"
-                    yield f"data: {_json.dumps({'type': 'sources', 'sources': [{'title': s['title'], 'url': s['url']} for s in quick_results], 'confidence': confidence, 'images': []})}\n\n"
-                    yield f"data: {_json.dumps({'type': 'token', 'content': answer_text})}\n\n"
-                    yield f"data: {_json.dumps({'type': 'done', 'confidence': confidence, 'sources': [{'title': s['title'], 'url': s['url']} for s in quick_results], 'images': [], 'latency_ms': elapsed})}\n\n"
-
-                return StreamingResponse(_brain_web_events(), media_type="text/event-stream")
-
-    use_web = payload.use_web and not is_personal_query(cleaned_query) and not followup_mode
-    has_model = _has_available_model()
+    retrieval_allowed = not _is_greeting(cleaned_query)
+    use_web = payload.use_web and retrieval_allowed and not is_personal_query(cleaned_query) and not followup_mode
     chosen_model = payload.model or _choose_internal_model(cleaned_query, use_web)
 
     # Full pipeline with thinking stages
-    def _stream_events():
+    def _stream_events() -> Iterator[str]:
+        try:
+            yield from _stream_events_inner()
+        except Exception as exc:
+            # RESILIENCE: If anything crashes, always return a Brain answer
+            logger.error("Stream pipeline error: %s", exc, exc_info=True)
+            brain_recovery = credon_answer(cleaned_query, sources=None, target_language=target_language)
+            if not brain_recovery:
+                brain_recovery = (
+                    f"I'm working on answering **\"{cleaned_query}\"**. "
+                    "Let me try a different approach — rephrase your question or try again in a moment.\n\n"
+                    "**You might also want to know:**\n"
+                    "- Can you break this question into parts?\n"
+                    "- Try a more specific version?\n"
+                    "- Ask about a related topic?"
+                )
+            save_message(payload.user_id, payload.session_id, "assistant", brain_recovery)
+            elapsed = int((perf_counter() - start) * 1000)
+            yield f"data: {_json.dumps({'type': 'token', 'content': brain_recovery})}\n\n"
+            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'medium', 'sources': [], 'images': [], 'latency_ms': elapsed, 'metadata': {'routing': {'selected_route': 'error_recovery_stream', 'reason': str(exc)[:120]}}})}\n\n"
+
+    def _stream_events_inner():
         results = []
-        knowledge_results = retrieve_knowledge_context(payload.user_id, cleaned_query, top_k=4)
+        knowledge_results = retrieve_knowledge_context(payload.user_id, cleaned_query, top_k=4) if retrieval_allowed else []
         if use_web:
             yield f"data: {_json.dumps({'type': 'status', 'stage': 'searching', 'message': 'Searching knowledge sources...'})}\n\n"
             web_results = retrieve_sources(cleaned_query, max_results=_web_result_budget(cleaned_query))
-            results = _merge_sources(knowledge_results, web_results)
+            merged_results = _merge_sources(knowledge_results, web_results)
+            results, eval_diag = _evaluate_sources(cleaned_query, merged_results)
         else:
-            results = knowledge_results
+            results, eval_diag = _evaluate_sources(cleaned_query, knowledge_results)
 
         sources_payload = [{"title": s["title"], "url": s["url"]} for s in results]
 
@@ -747,30 +1187,38 @@ def chat_stream(payload: ChatRequest):
             brain_answer = credon_answer(cleaned_query, sources=results or None, target_language=target_language)
             if brain_answer:
                 answer_text = _clean_answer(brain_answer)
-                thinking = credon_think(cleaned_query, sources=results or None)
+                thinking = credon_think(cleaned_query, sources=results or None) if payload.deep_think else ""
                 suggestions = extract_suggestions(answer_text)
                 answer_text = trim_answer_suggestions(answer_text)
-                save_message(payload.user_id, payload.session_id, "assistant", answer_text)
+                save_message(
+                    payload.user_id, payload.session_id, "assistant", answer_text,
+                    thinking=thinking, confidence=confidence,
+                    sources=sources_payload,
+                )
                 learn_from_conversation(cleaned_query, answer_text, confidence)
                 elapsed = int((perf_counter() - start) * 1000)
                 if thinking:
                     yield f"data: {_json.dumps({'type': 'thinking', 'content': thinking})}\n\n"
                 yield f"data: {_json.dumps({'type': 'sources', 'sources': sources_payload, 'confidence': confidence, 'images': []})}\n\n"
                 yield f"data: {_json.dumps({'type': 'token', 'content': answer_text})}\n\n"
-                yield f"data: {_json.dumps({'type': 'done', 'latency_ms': elapsed, 'suggestions': suggestions})}\n\n"
+                yield f"data: {_json.dumps({'type': 'done', 'latency_ms': elapsed, 'suggestions': suggestions, 'metadata': {'routing': {'selected_route': 'credon_answer_fallback_stream', 'score': round(quick_score, 4), 'reason': 'model_unavailable'}, 'evaluator': eval_diag}})}\n\n"
                 return
 
-        # Stage 2: Thinking / Evaluating — stream word by word
-        yield f"data: {_json.dumps({'type': 'status', 'stage': 'thinking', 'message': 'Thinking deeply about this...'})}\n\n"
+        # Stage 2: Thinking / Evaluating — only for complex queries
+        should_think = payload.deep_think and (len(results) >= 2 or _is_math_query(cleaned_query) or len(cleaned_query.split()) > 8)
+        if should_think:
+            yield f"data: {_json.dumps({'type': 'status', 'stage': 'thinking', 'message': 'Analyzing sources and reasoning...'})}\n\n"
 
-        thinking_tokens: list[str] = []
-        for token in think_about_sources_stream(cleaned_query, results, model=chosen_model):
-            thinking_tokens.append(token)
-            yield f"data: {_json.dumps({'type': 'thinking_token', 'content': token})}\n\n"
+            thinking_tokens: list[str] = []
+            for token in think_about_sources_stream(cleaned_query, results, model=chosen_model):
+                thinking_tokens.append(token)
+                yield f"data: {_json.dumps({'type': 'thinking_token', 'content': token})}\n\n"
 
-        thinking = "".join(thinking_tokens)
-        if thinking:
-            yield f"data: {_json.dumps({'type': 'thinking_done', 'content': thinking})}\n\n"
+            thinking = "".join(thinking_tokens)
+            if thinking:
+                yield f"data: {_json.dumps({'type': 'thinking_done', 'content': thinking})}\n\n"
+        else:
+            thinking = ""
 
         # Image search for visual queries
         images_payload: list[dict[str, str]] = []
@@ -794,6 +1242,13 @@ def chat_stream(payload: ChatRequest):
 
         answer_text = _clean_answer("".join(full_answer))
 
+        # If model returned empty/degraded, fall back to Brain
+        if not answer_text or len(answer_text.strip()) < 20:
+            brain_fallback = credon_answer(cleaned_query, sources=results or None, target_language=target_language)
+            if brain_fallback and len(brain_fallback) > len(answer_text or ""):
+                answer_text = _clean_answer(brain_fallback)
+                yield f"data: {_json.dumps({'type': 'token', 'content': answer_text})}\n\n"
+
         # Extract suggestions before trimming
         suggestions = extract_suggestions(answer_text)
         answer_text = trim_answer_suggestions(answer_text)
@@ -803,10 +1258,15 @@ def chat_stream(payload: ChatRequest):
             cleaned_query, answer_text, results, thinking, chosen_model, confidence
         )
 
-        save_message(payload.user_id, payload.session_id, "assistant", answer_text)
+        save_message(
+            payload.user_id, payload.session_id, "assistant", answer_text,
+            thinking=thinking, confidence=adj_confidence,
+            sources=sources_payload,
+            metadata={"routing": {"selected_route": "model_generation_stream", "score": round(quick_score, 4), "reason": quick_reason}, "evaluator": eval_diag},
+        )
         learn_from_conversation(cleaned_query, answer_text, adj_confidence)
         elapsed = int((perf_counter() - start) * 1000)
-        yield f"data: {_json.dumps({'type': 'done', 'latency_ms': elapsed, 'confidence': adj_confidence, 'suggestions': suggestions})}\n\n"
+        yield f"data: {_json.dumps({'type': 'done', 'latency_ms': elapsed, 'confidence': adj_confidence, 'suggestions': suggestions, 'metadata': {'routing': {'selected_route': 'model_generation_stream', 'score': round(quick_score, 4), 'reason': quick_reason}, 'evaluator': eval_diag}})}\n\n"
 
     return StreamingResponse(_stream_events(), media_type="text/event-stream")
 
@@ -830,19 +1290,29 @@ def get_user_sessions(user_id: str) -> list[ChatSessionSummary]:
 @router.get("/chats/{user_id}/{session_id}", response_model=ChatTranscriptResponse)
 def get_user_transcript(user_id: str, session_id: str) -> ChatTranscriptResponse:
     transcript = get_transcript(user_id, session_id)
-    messages = [
-        ChatMessage(
+    messages: list[ChatMessage] = []
+    for item in transcript:
+        raw_sources = [s for s in (item.get("sources") or []) if isinstance(s, dict)]  # pyright: ignore[reportUnknownVariableType]
+        sources = [Source(title=str(s.get("title", "")), url=str(s.get("url", ""))) for s in raw_sources if "title" in s and "url" in s]
+        raw_meta = item.get("metadata")
+        meta: dict[str, Any] = raw_meta if isinstance(raw_meta, dict) else {}  # pyright: ignore[reportAssignmentType]
+        messages.append(ChatMessage(
             role=cast(Literal["user", "assistant"], item.get("role", "assistant")),
             text=item.get("text", ""),
             created_at=item.get("created_at", ""),
-        )
-        for item in transcript
-    ]
+            thinking=item.get("thinking", ""),
+            confidence=item.get("confidence", ""),
+            sources=sources,
+            metadata=meta,
+        ))
     return ChatTranscriptResponse(user_id=user_id, session_id=session_id, messages=messages)
 
 
 @router.post("/feedback")
 def submit_feedback(payload: FeedbackRequest):
+    """Accept feedback and use it for self-learning.
+    Downvotes remove bad answers from the learned DB.
+    Upvotes boost answer confidence."""
     print(
         "[Credon Feedback]",
         {
@@ -852,4 +1322,26 @@ def submit_feedback(payload: FeedbackRequest):
             "preview": payload.message_text[:120],
         },
     )
+    try:
+        from app.services.credon_brain import learned_qa_ref, save_learned_ref, lock_ref
+
+        _qa_list = learned_qa_ref()
+        _save_fn = save_learned_ref()
+        answer_preview = payload.message_text[:100].lower().strip()
+        with lock_ref:
+            for entry in _qa_list:
+                stored = entry.get("answer", "")[:100].lower().strip()
+                if stored == answer_preview:
+                    if payload.vote == "down":
+                        _qa_list.remove(entry)
+                        _save_fn()
+                        print("[Credon Feedback] Removed bad answer from learned DB")
+                    elif payload.vote == "up":
+                        entry["confidence"] = "high"
+                        _save_fn()
+                        print("[Credon Feedback] Boosted answer confidence to 'high'")
+                    break
+    except Exception as exc:
+        print(f"[Credon Feedback] Error updating learned DB: {exc}")
+
     return {"ok": True}

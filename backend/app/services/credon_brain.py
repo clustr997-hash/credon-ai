@@ -34,6 +34,11 @@ _LEARNED_FILE = _DATA_DIR / "credon_learned.json"
 _FEEDBACK_FILE = _DATA_DIR / "credon_feedback.json"
 _LOCK = RLock()
 
+# Public aliases for cross-module access (feedback route)
+learned_qa_ref = lambda: _learned_qa  # noqa: E731
+save_learned_ref = lambda: _save_learned  # noqa: E731
+lock_ref = _LOCK
+
 # ── Built-in Knowledge Base ──────────────────────────────────────
 
 KNOWLEDGE_BASE: dict[str, dict[str, str]] = {
@@ -49,6 +54,22 @@ KNOWLEDGE_BASE: dict[str, dict[str, str]] = {
     "what is deep learning": {
         "answer": "**Deep Learning** is a subset of machine learning that uses artificial neural networks with many layers (hence \"deep\").\n\n### Key Concepts:\n- **Neural Networks**: Layers of interconnected nodes (neurons)\n- **Backpropagation**: How networks learn from errors\n- **Activation Functions**: ReLU, Sigmoid, Softmax\n- **Architectures**: CNNs (images), RNNs/LSTMs (sequences), Transformers (language)\n\n### Why It's Powerful:\n- Automatically learns features from raw data\n- Scales with more data and compute\n- State-of-the-art in: image recognition, NLP, speech, game playing\n\n### Breakthrough Models:\n- **GPT/LLMs**: Language understanding & generation\n- **DALL-E/Stable Diffusion**: Image generation\n- **AlphaFold**: Protein structure prediction\n\n**You might also want to know:**\n- How do transformers work?\n- What hardware do you need for deep learning?\n- What is transfer learning?",
         "thinking": "Deep learning query — covering neural network basics, architectures, and modern breakthroughs. High confidence.",
+    },
+    "how do large language models work": {
+        "answer": "## How Large Language Models (LLMs) Work\n\nLLMs like GPT, DeepSeek, LLaMA, and Gemini are AI systems trained to understand and generate human language.\n\n### Core Architecture: Transformer\nLLMs are built on the **Transformer architecture** (introduced in 2017 by Google):\n\n1. **Tokenization** — Text is split into tokens (words/subwords)\n2. **Embeddings** — Each token becomes a high-dimensional vector\n3. **Self-Attention** — The model learns which tokens relate to each other\n4. **Feed-Forward Layers** — Process and transform the attended information\n5. **Output Layer** — Predicts the next token probability distribution\n\n### Training Process:\n- **Pre-training**: Learns language patterns from massive text corpora (billions of tokens)\n- **Fine-tuning**: Adapted for specific tasks (chat, coding, reasoning)\n- **RLHF**: Reinforcement Learning from Human Feedback — aligns model with human preferences\n\n### Key Principles:\n- **Next-token prediction**: The fundamental task — predict what comes next\n- **Scaling laws**: Bigger models + more data = better performance\n- **Emergent abilities**: Complex reasoning appears at scale\n- **Context window**: How much text the model can process at once\n\n### Modern LLM Families:\n| Model | Creator | Strength |\n|-------|---------|----------|\n| GPT-4o | OpenAI | General intelligence |\n| DeepSeek R1 | DeepSeek | Reasoning + math |\n| LLaMA 3 | Meta | Open-source |\n| Gemini | Google | Multimodal |\n| Claude | Anthropic | Safety + analysis |\n\n**You might also want to know:**\n- What is the transformer architecture?\n- How is RLHF used to train AI?\n- What are the limitations of LLMs?",
+        "thinking": "Question about LLM mechanics. Will explain transformer architecture, training pipeline, and key principles. Core AI topic — high confidence.",
+    },
+    "what is transformer architecture": {
+        "answer": "## The Transformer Architecture\n\nThe **Transformer** is the neural network architecture behind all modern LLMs. Introduced in the 2017 paper *\"Attention Is All You Need\"* by Vaswani et al.\n\n### Key Innovation: Self-Attention\nUnlike previous models (RNNs) that process text sequentially, Transformers process **all tokens in parallel** using attention mechanisms.\n\n### How It Works:\n```\nInput → Tokenize → Embed → [Attention + FFN] × N layers → Output\n```\n\n1. **Multi-Head Attention**: Learns different types of relationships between words\n   - $\\text{Attention}(Q, K, V) = \\text{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V$\n2. **Position Encoding**: Adds positional information since attention has no inherent order\n3. **Feed-Forward Networks**: Two linear transformations with ReLU activation\n4. **Layer Normalization**: Stabilizes training\n5. **Residual Connections**: Helps gradients flow through deep networks\n\n### Why It Matters:\n- **Parallelizable**: Trains much faster than RNNs on GPUs\n- **Long-range dependencies**: Can relate words far apart in text\n- **Scalable**: Works from millions to trillions of parameters\n\n### Variants:\n- **Encoder-only**: BERT (classification, embeddings)\n- **Decoder-only**: GPT, LLaMA (text generation)\n- **Encoder-Decoder**: T5, BART (translation, summarization)\n\n**You might also want to know:**\n- How does self-attention work mathematically?\n- What is BERT vs GPT?\n- How do you train a transformer from scratch?",
+        "thinking": "Transformer architecture question. Covering self-attention, architecture components, and variants. Deep technical topic — high confidence.",
+    },
+    "how does ai generate text": {
+        "answer": "## How AI Generates Text\n\nAI text generation works through **autoregressive next-token prediction**:\n\n### Step-by-Step Process:\n1. **Input Processing**: Your prompt is tokenized into numbers\n2. **Context Understanding**: The model processes all tokens through attention layers\n3. **Probability Distribution**: For each position, the model outputs probabilities for ~50,000+ possible next tokens\n4. **Sampling Strategy**: A token is selected using:\n   - **Temperature**: Controls randomness (low = deterministic, high = creative)\n   - **Top-p (nucleus)**: Only considers tokens within cumulative probability p\n   - **Top-k**: Only considers the k most likely tokens\n5. **Iteration**: The generated token is appended, and the process repeats\n\n### Example:\n```\nPrompt: \"The capital of France is\"\nModel predicts: Paris (92%), Lyon (3%), Marseille (1%), ...\nOutput: \"Paris\"\nNext: \"The capital of France is Paris.\"\n```\n\n### Key Concepts:\n- **Context Window**: Maximum input length (4K to 128K+ tokens)\n- **Streaming**: Tokens are generated one at a time (that's why AI \"types\")\n- **Chain-of-Thought**: Multi-step reasoning before answering\n- **Hallucination**: When the model generates plausible but false information\n\n**You might also want to know:**\n- What is temperature in AI generation?\n- How do AI models avoid hallucination?\n- What is prompt engineering?",
+        "thinking": "Text generation mechanics. Explaining autoregressive prediction, sampling strategies, and key concepts. High confidence.",
+    },
+    "what is prompt engineering": {
+        "answer": "## Prompt Engineering\n\nPrompt engineering is the art and science of crafting inputs to get the best outputs from AI models.\n\n### Key Techniques:\n1. **Clear Instructions**: Be specific about what you want\n2. **Few-Shot Examples**: Show the AI 2-3 examples of desired output\n3. **Chain-of-Thought**: Ask the model to \"think step by step\"\n4. **Role Assignment**: \"You are an expert in...\"\n5. **Output Format**: Specify JSON, markdown, bullet points, etc.\n\n### Example — Bad vs Good:\n```\nBad:  \"Tell me about Python\"\nGood: \"Explain Python's key features for a beginner programmer.\n       Include: syntax examples, use cases, and comparison with JavaScript.\n       Format as bullet points with code snippets.\"\n```\n\n### Advanced Patterns:\n- **ReAct**: Reasoning + Action loops\n- **Tree of Thought**: Explore multiple reasoning paths\n- **Self-Consistency**: Generate multiple answers, pick the consensus\n- **RAG**: Retrieval-Augmented Generation (search + generate)\n\n**You might also want to know:**\n- How to write better prompts for coding tasks?\n- What is RAG (Retrieval-Augmented Generation)?\n- How do system prompts work?",
+        "thinking": "Prompt engineering techniques. Covering basic to advanced patterns with practical examples. High confidence.",
     },
     "what is python": {
         "answer": "**Python** is one of the world's most popular programming languages, known for its simplicity and versatility.\n\n### Why Python?\n- **Easy to learn**: Clean, readable syntax\n- **Versatile**: Web, AI/ML, data science, automation, scripting\n- **Huge ecosystem**: 400,000+ packages on PyPI\n- **Community**: One of the largest developer communities\n\n### Key Use Cases:\n- **Web Development**: Django, Flask, FastAPI\n- **Data Science**: pandas, NumPy, matplotlib\n- **AI/ML**: TensorFlow, PyTorch, scikit-learn\n- **Automation**: Selenium, requests, BeautifulSoup\n\n### Quick Example:\n```python\ndef greet(name):\n    return f\"Hello, {name}! Welcome to Python.\"\n\nprint(greet(\"World\"))  # Hello, World! Welcome to Python.\n```\n\n**You might also want to know:**\n- What are the best Python frameworks?\n- How to install Python packages?\n- Python vs JavaScript — which to learn first?",
@@ -132,13 +153,104 @@ KNOWLEDGE_BASE: dict[str, dict[str, str]] = {
         "answer": "**FastAPI** is a modern, fast Python web framework for building APIs.\n\n### Why FastAPI?\n- **Fastest Python framework** (on par with Node.js/Go)\n- **Auto-generated docs** — Swagger UI built-in\n- **Type safety** — Uses Python type hints\n- **Async support** — Built on Starlette + Pydantic\n\n### Quick Example:\n```python\nfrom fastapi import FastAPI\nfrom pydantic import BaseModel\n\napp = FastAPI()\n\nclass Item(BaseModel):\n    name: str\n    price: float\n\n@app.get(\"/\")\ndef read_root():\n    return {\"Hello\": \"World\"}\n\n@app.post(\"/items/\")\ndef create_item(item: Item):\n    return {\"name\": item.name, \"price\": item.price}\n```\n\n```bash\npip install fastapi uvicorn\nuvicorn main:app --reload\n# Docs at http://localhost:8000/docs\n```\n\n**You might also want to know:**\n- How to add authentication to FastAPI?\n- FastAPI vs Flask vs Django?\n- How to deploy FastAPI for free?",
         "thinking": "FastAPI fundamentals. Covering speed, features, code example. High confidence — Credon's own backend uses it!",
     },
+    # ─── PHYSICS ───
+    "what is newton's laws of motion": {
+        "answer": "## Newton's Three Laws of Motion\n\n### First Law (Inertia)\nAn object at rest stays at rest, and an object in motion stays in motion with the same velocity, unless acted upon by an external force.\n$$\\sum \\vec{F} = 0 \\implies \\vec{v} = \\text{constant}$$\n\n### Second Law (Force & Acceleration)\nThe acceleration of an object is directly proportional to the net force and inversely proportional to its mass.\n$$\\vec{F} = m\\vec{a}$$\n\n### Third Law (Action-Reaction)\nFor every action, there is an equal and opposite reaction.\n$$\\vec{F}_{12} = -\\vec{F}_{21}$$\n\n### Examples:\n- **1st Law**: A book on a table stays still until pushed\n- **2nd Law**: A heavier car needs more force to accelerate\n- **3rd Law**: Rocket exhaust pushes down → rocket goes up\n\n**You might also want to know:**\n- How to solve F=ma problems step by step?\n- What is the difference between mass and weight?\n- How do Newton's laws apply to circular motion?",
+        "thinking": "Newton's laws — core classical mechanics. Covering all three laws with formulas and examples. High confidence.",
+    },
+    "what is thermodynamics": {
+        "answer": "## Thermodynamics — The Science of Heat and Energy\n\n### Four Laws:\n\n**Zeroth Law**: If A is in thermal equilibrium with B, and B with C, then A is with C.\n\n**First Law** (Conservation of Energy):\n$$\\Delta U = Q - W$$\nInternal energy change = Heat added − Work done\n\n**Second Law**: Entropy of an isolated system always increases.\n$$\\Delta S \\geq 0$$\nHeat flows spontaneously from hot to cold, never the reverse.\n\n**Third Law**: As temperature approaches absolute zero, entropy approaches a minimum.\n$$\\lim_{T \\to 0} S = 0$$\n\n### Key Concepts:\n- **Enthalpy**: $H = U + PV$\n- **Gibbs Free Energy**: $G = H - TS$ (spontaneous if $\\Delta G < 0$)\n- **Carnot Efficiency**: $\\eta = 1 - \\frac{T_C}{T_H}$\n\n### Applications:\nEngines, refrigerators, chemical reactions, power plants, weather systems.\n\n**You might also want to know:**\n- How does a Carnot engine work?\n- What is entropy in simple terms?\n- How to solve thermodynamics numerical problems?",
+        "thinking": "Thermodynamics fundamentals. All four laws with formulas. Core physics topic for engineering and science students.",
+    },
+    "what is electromagnetic induction": {
+        "answer": "## Electromagnetic Induction\n\nDiscovered by **Michael Faraday** (1831) — the process of generating electric current by changing magnetic flux.\n\n### Faraday's Law:\n$$\\mathcal{E} = -\\frac{d\\Phi_B}{dt}$$\nThe induced EMF equals the negative rate of change of magnetic flux.\n\n### Lenz's Law:\nThe induced current flows in a direction that **opposes** the change causing it (the minus sign).\n\n### Magnetic Flux:\n$$\\Phi_B = \\vec{B} \\cdot \\vec{A} = BA\\cos\\theta$$\n\n### Applications:\n- **Generators**: Convert mechanical → electrical energy\n- **Transformers**: Step voltage up/down\n- **Inductors**: Store energy in magnetic fields\n- **Wireless charging**: Inductive coupling\n\n### Key Formula (for a coil):\n$$\\mathcal{E} = -N \\frac{d\\Phi_B}{dt}$$\nwhere $N$ = number of turns\n\n**You might also want to know:**\n- How does an AC generator work?\n- What is self-inductance and mutual inductance?\n- How to solve Faraday's law problems?",
+        "thinking": "Electromagnetic induction — Faraday's law, Lenz's law. Core electromagnetism topic. High confidence.",
+    },
+    "what is optics": {
+        "answer": "## Optics — The Study of Light\n\n### Reflection:\n$$\\theta_i = \\theta_r$$\nAngle of incidence = Angle of reflection\n\n### Refraction (Snell's Law):\n$$n_1 \\sin\\theta_1 = n_2 \\sin\\theta_2$$\n\n### Lens Formula:\n$$\\frac{1}{f} = \\frac{1}{v} - \\frac{1}{u}$$\n\n### Mirror Formula:\n$$\\frac{1}{f} = \\frac{1}{v} + \\frac{1}{u}$$\n\n### Types of Optics:\n- **Geometrical**: Ray tracing, lenses, mirrors\n- **Wave**: Interference, diffraction, polarization\n- **Quantum**: Photons, photoelectric effect\n\n### Key Phenomena:\n- **Total Internal Reflection**: Fiber optics, diamonds sparkling\n- **Diffraction**: Light bending around obstacles\n- **Interference**: Young's double-slit experiment\n- **Polarization**: Sunglasses, LCD screens\n\n**You might also want to know:**\n- How to solve lens/mirror problems step by step?\n- What is Young's double-slit experiment?\n- How do optical fibers work?",
+        "thinking": "Optics fundamentals. Covering reflection, refraction, wave optics. High confidence.",
+    },
+    "what is wave motion": {
+        "answer": "## Wave Motion\n\nA wave is a disturbance that transfers energy without transferring matter.\n\n### Wave Equation:\n$$v = f\\lambda$$\nVelocity = Frequency × Wavelength\n\n### Types:\n- **Transverse**: Vibration perpendicular to direction (light, string waves)\n- **Longitudinal**: Vibration parallel to direction (sound waves)\n\n### Key Properties:\n- **Amplitude ($A$)**: Maximum displacement\n- **Frequency ($f$)**: Oscillations per second (Hz)\n- **Wavelength ($\\lambda$)**: Distance between successive crests\n- **Period ($T$)**: Time for one complete oscillation: $T = 1/f$\n\n### Wave Phenomena:\n- **Superposition**: Waves add when they overlap\n- **Interference**: Constructive (amplify) or destructive (cancel)\n- **Standing Waves**: $f_n = \\frac{nv}{2L}$ (harmonics)\n- **Doppler Effect**: $f' = f \\frac{v \\pm v_o}{v \\mp v_s}$\n\n**You might also want to know:**\n- How does sound travel through different media?\n- What is the Doppler effect in detail?\n- How to solve standing wave problems?",
+        "thinking": "Wave motion fundamentals. Covering types, equation, properties. Core physics topic.",
+    },
+    # ─── MATHEMATICS ───
+    "what is linear algebra": {
+        "answer": "## Linear Algebra\n\nThe study of vectors, matrices, and linear transformations — the backbone of modern math and CS.\n\n### Core Concepts:\n\n**Vectors & Operations:**\n$$\\vec{a} \\cdot \\vec{b} = |a||b|\\cos\\theta = \\sum a_i b_i$$\n\n**Matrix Multiplication:**\n$$(AB)_{ij} = \\sum_k A_{ik} B_{kj}$$\n\n**Determinant (2×2):**\n$$\\det \\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix} = ad - bc$$\n\n**Eigenvalues & Eigenvectors:**\n$$A\\vec{v} = \\lambda\\vec{v}$$ where $\\lambda$ = eigenvalue, $\\vec{v}$ = eigenvector\n\n### Key Results:\n- **Cramer's Rule**: Solve $Ax = b$ using determinants\n- **Inverse**: $A^{-1} = \\frac{1}{\\det(A)} \\text{adj}(A)$\n- **Rank**: Number of linearly independent rows/columns\n\n### Applications:\n- Machine learning (PCA, SVD)\n- Computer graphics (transformations)\n- Quantum mechanics (state spaces)\n- Data science (regression)\n\n**You might also want to know:**\n- How to find eigenvalues step by step?\n- What is SVD and why does it matter?\n- How to solve systems of linear equations?",
+        "thinking": "Linear algebra fundamentals. Covering vectors, matrices, eigenvalues. Essential for STEM students.",
+    },
+    "what is probability and statistics": {
+        "answer": "## Probability & Statistics\n\n### Probability Basics:\n$$P(A) = \\frac{\\text{favorable outcomes}}{\\text{total outcomes}}$$\n\n**Key Rules:**\n- Addition: $P(A \\cup B) = P(A) + P(B) - P(A \\cap B)$\n- Multiplication: $P(A \\cap B) = P(A) \\cdot P(B|A)$\n- Bayes' Theorem: $P(A|B) = \\frac{P(B|A) \\cdot P(A)}{P(B)}$\n\n### Distributions:\n| Distribution | PMF/PDF | Mean | Variance |\n|---|---|---|---|\n| Binomial | $\\binom{n}{k}p^k(1-p)^{n-k}$ | $np$ | $np(1-p)$ |\n| Poisson | $\\frac{e^{-\\lambda}\\lambda^k}{k!}$ | $\\lambda$ | $\\lambda$ |\n| Normal | $\\frac{1}{\\sigma\\sqrt{2\\pi}}e^{-(x-\\mu)^2/2\\sigma^2}$ | $\\mu$ | $\\sigma^2$ |\n\n### Statistics:\n- **Mean**: $\\bar{x} = \\frac{\\sum x_i}{n}$\n- **Variance**: $\\sigma^2 = \\frac{\\sum(x_i - \\bar{x})^2}{n}$\n- **Standard Deviation**: $\\sigma = \\sqrt{\\sigma^2}$\n\n**You might also want to know:**\n- How to solve Bayes' theorem problems?\n- What is hypothesis testing?\n- How to use the normal distribution table?",
+        "thinking": "Probability and statistics. Core math topic with formulas, distributions, and statistical measures.",
+    },
+    "what is trigonometry": {
+        "answer": "## Trigonometry\n\nThe study of relationships between angles and sides of triangles.\n\n### Basic Ratios (Right Triangle):\n$$\\sin\\theta = \\frac{\\text{opposite}}{\\text{hypotenuse}}, \\quad \\cos\\theta = \\frac{\\text{adjacent}}{\\text{hypotenuse}}, \\quad \\tan\\theta = \\frac{\\sin\\theta}{\\cos\\theta}$$\n\n### Key Identities:\n- **Pythagorean**: $\\sin^2\\theta + \\cos^2\\theta = 1$\n- **Double Angle**: $\\sin 2\\theta = 2\\sin\\theta\\cos\\theta$\n- **Sum**: $\\sin(A+B) = \\sin A \\cos B + \\cos A \\sin B$\n\n### Important Values:\n| $\\theta$ | $\\sin$ | $\\cos$ | $\\tan$ |\n|---|---|---|---|\n| 0° | 0 | 1 | 0 |\n| 30° | 1/2 | √3/2 | 1/√3 |\n| 45° | 1/√2 | 1/√2 | 1 |\n| 60° | √3/2 | 1/2 | √3 |\n| 90° | 1 | 0 | ∞ |\n\n### Applications:\nNavigation, physics (waves, oscillations), engineering, astronomy, music theory.\n\n**You might also want to know:**\n- How to prove trigonometric identities?\n- What are inverse trig functions?\n- How is trigonometry used in physics?",
+        "thinking": "Trigonometry fundamentals. Covering ratios, identities, and value table. Core math topic.",
+    },
+    "what is differential equations": {
+        "answer": "## Differential Equations\n\nEquations involving derivatives — they model how things change.\n\n### Types:\n- **ODE** (Ordinary): One independent variable — $\\frac{dy}{dx} + P(x)y = Q(x)$\n- **PDE** (Partial): Multiple variables — $\\frac{\\partial^2 u}{\\partial x^2} + \\frac{\\partial^2 u}{\\partial y^2} = 0$\n\n### Common Forms:\n\n**Separable**: $\\frac{dy}{dx} = f(x)g(y) \\implies \\int\\frac{dy}{g(y)} = \\int f(x)dx$\n\n**Linear 1st Order**: $\\frac{dy}{dx} + Py = Q$\nSolution: $y = e^{-\\int P\\,dx}\\left(\\int Qe^{\\int P\\,dx}dx + C\\right)$\n\n**2nd Order Constant Coefficients**: $ay'' + by' + cy = 0$\nCharacteristic equation: $ar^2 + br + c = 0$\n\n### Applications:\n- Population growth: $\\frac{dP}{dt} = kP \\implies P = P_0 e^{kt}$\n- Radioactive decay: $N = N_0 e^{-\\lambda t}$\n- Spring-mass: $m\\ddot{x} + c\\dot{x} + kx = F(t)$\n- Circuit analysis: $L\\frac{di}{dt} + Ri = V$\n\n**You might also want to know:**\n- How to solve separable ODEs step by step?\n- What is the Laplace transform method?\n- How to solve second-order linear ODEs?",
+        "thinking": "Differential equations. Covering types, solution methods, applications. Essential for STEM students.",
+    },
+    # ─── CHEMISTRY ───
+    "what is periodic table": {
+        "answer": "## The Periodic Table of Elements\n\nOrganized by **atomic number** (protons), the periodic table arranges all known elements by their properties.\n\n### Structure:\n- **Periods** (rows): 7 periods — elements in a period have the same number of electron shells\n- **Groups** (columns): 18 groups — elements in a group have similar chemical properties\n\n### Key Groups:\n| Group | Name | Examples | Properties |\n|---|---|---|---|\n| 1 | Alkali Metals | Li, Na, K | Highly reactive, soft metals |\n| 2 | Alkaline Earth | Be, Mg, Ca | Reactive, form +2 ions |\n| 17 | Halogens | F, Cl, Br, I | Very reactive nonmetals |\n| 18 | Noble Gases | He, Ne, Ar | Stable, unreactive |\n\n### Trends Across a Period (→):\n- Atomic radius **decreases**\n- Ionization energy **increases**\n- Electronegativity **increases**\n- Metallic character **decreases**\n\n### Trends Down a Group (↓):\n- Atomic radius **increases**\n- Ionization energy **decreases**\n- Electronegativity **decreases**\n- Metallic character **increases**\n\n**You might also want to know:**\n- What is electron configuration?\n- How do periodic trends work in detail?\n- What are transition metals?",
+        "thinking": "Periodic table fundamentals. Structure, groups, and trends. Core chemistry topic.",
+    },
+    "what is chemical bonding": {
+        "answer": "## Chemical Bonding\n\nAtoms bond to achieve a stable electron configuration (usually an octet).\n\n### Types of Bonds:\n\n**1. Ionic Bond**\n- Transfer of electrons (metal → nonmetal)\n- Example: $\\text{Na}^+ + \\text{Cl}^- \\rightarrow \\text{NaCl}$\n- Properties: High melting point, conducts electricity in solution\n\n**2. Covalent Bond**\n- Sharing of electrons (nonmetal + nonmetal)\n- Example: $\\text{H}_2\\text{O}$ — oxygen shares electrons with two hydrogens\n- Types: Single ($\\sigma$), Double ($\\sigma + \\pi$), Triple ($\\sigma + 2\\pi$)\n\n**3. Metallic Bond**\n- Sea of delocalized electrons\n- Explains conductivity, malleability, luster\n\n### Bond Properties:\n- **Bond Length**: Distance between bonded nuclei\n- **Bond Energy**: Energy to break a bond\n- **Polarity**: Electronegativity difference\n  - Nonpolar: $\\Delta EN < 0.5$\n  - Polar covalent: $0.5 < \\Delta EN < 1.7$\n  - Ionic: $\\Delta EN > 1.7$\n\n### Molecular Geometry (VSEPR):\n- 2 pairs → Linear (180°)\n- 3 pairs → Trigonal planar (120°)\n- 4 pairs → Tetrahedral (109.5°)\n\n**You might also want to know:**\n- How to draw Lewis dot structures?\n- What is hybridization (sp, sp2, sp3)?\n- How does VSEPR theory predict molecular shape?",
+        "thinking": "Chemical bonding fundamentals. Ionic, covalent, metallic bonds with properties. Core chemistry.",
+    },
+    "what is organic chemistry": {
+        "answer": "## Organic Chemistry — Chemistry of Carbon Compounds\n\n### Why Carbon?\n- Forms 4 covalent bonds (can chain, branch, form rings)\n- Bonds with C, H, O, N, S, halogens\n\n### Functional Groups:\n| Group | Formula | Name | Example |\n|---|---|---|---|\n| -OH | R-OH | Alcohol | Ethanol |\n| -CHO | R-CHO | Aldehyde | Formaldehyde |\n| -COOH | R-COOH | Carboxylic acid | Acetic acid |\n| -NH₂ | R-NH₂ | Amine | Methylamine |\n| C=C | R₂C=CR₂ | Alkene | Ethylene |\n| -CO- | R-CO-R | Ketone | Acetone |\n\n### Naming (IUPAC):\n1. Find longest carbon chain\n2. Number carbons from nearest substituent\n3. Name substituents with position numbers\n4. Example: 2-methylbutane = 4 carbons, methyl at C-2\n\n### Key Reactions:\n- **Substitution**: $\\text{CH}_4 + \\text{Cl}_2 \\xrightarrow{UV} \\text{CH}_3\\text{Cl} + \\text{HCl}$\n- **Addition**: Alkene + HBr → haloalkane\n- **Elimination**: Alcohol → Alkene + H₂O\n- **Oxidation**: Alcohol → Aldehyde → Carboxylic acid\n\n**You might also want to know:**\n- How to name organic compounds step by step?\n- What is the difference between SN1 and SN2 reactions?\n- How do aromatic compounds work?",
+        "thinking": "Organic chemistry fundamentals. Functional groups, naming, reactions. Core chemistry topic for students.",
+    },
+    # ─── BIOLOGY ───
+    "what is cell biology": {
+        "answer": "## Cell Biology — The Study of Life's Basic Unit\n\n### Cell Types:\n- **Prokaryotic**: No nucleus (bacteria, archaea)\n- **Eukaryotic**: Has nucleus (plants, animals, fungi)\n\n### Key Organelles:\n| Organelle | Function |\n|---|---|\n| **Nucleus** | DNA storage, gene expression control |\n| **Mitochondria** | ATP production (cellular respiration) |\n| **Ribosome** | Protein synthesis |\n| **ER** (Rough) | Protein processing + transport |\n| **ER** (Smooth) | Lipid synthesis, detox |\n| **Golgi** | Package & ship proteins |\n| **Lysosome** | Digestion of waste |\n| **Chloroplast** | Photosynthesis (plant cells only) |\n| **Cell Wall** | Structural support (plants, bacteria) |\n\n### Cell Division:\n- **Mitosis**: 1 cell → 2 identical cells (growth, repair)\n- **Meiosis**: 1 cell → 4 genetically unique cells (gametes)\n\n### Cell Membrane:\n- Phospholipid bilayer\n- Selectively permeable\n- Transport: Diffusion, osmosis, active transport\n\n**You might also want to know:**\n- How does mitosis differ from meiosis?\n- What is ATP and how is it produced?\n- How does osmosis work?",
+        "thinking": "Cell biology fundamentals. Organelles, cell types, division. Core biology topic.",
+    },
+    "what is genetics": {
+        "answer": "## Genetics — The Science of Heredity\n\n### DNA Structure:\n- Double helix of nucleotides (A-T, G-C base pairs)\n- Sugar-phosphate backbone\n- Gene = segment of DNA coding for a protein\n\n### Central Dogma:\n$$\\text{DNA} \\xrightarrow{\\text{transcription}} \\text{mRNA} \\xrightarrow{\\text{translation}} \\text{Protein}$$\n\n### Mendel's Laws:\n1. **Law of Segregation**: Each organism has two alleles per gene; they separate during gamete formation\n2. **Law of Independent Assortment**: Genes for different traits sort independently\n\n### Key Terms:\n- **Genotype**: Genetic makeup (BB, Bb, bb)\n- **Phenotype**: Physical expression (tall, short)\n- **Dominant**: Expressed in Bb\n- **Recessive**: Only expressed in bb\n- **Punnett Square**: Tool for predicting offspring ratios\n\n### DNA Replication:\n- **Semiconservative**: Each new DNA has one old + one new strand\n- Enzymes: Helicase (unwind), DNA Polymerase (copy), Ligase (join)\n\n**You might also want to know:**\n- How to solve Punnett square problems?\n- What are mutations and their types?\n- How does PCR amplify DNA?",
+        "thinking": "Genetics fundamentals. DNA, Mendel's laws, central dogma. Core biology topic.",
+    },
+    "what is photosynthesis": {
+        "answer": "## Photosynthesis — How Plants Make Food\n\n### Overall Equation:\n$$6\\text{CO}_2 + 6\\text{H}_2\\text{O} \\xrightarrow{\\text{light}} \\text{C}_6\\text{H}_{12}\\text{O}_6 + 6\\text{O}_2$$\n\n### Two Stages:\n\n**1. Light Reactions** (thylakoid membrane)\n- Absorb sunlight via chlorophyll\n- Split water: $2\\text{H}_2\\text{O} \\rightarrow 4\\text{H}^+ + 4e^- + \\text{O}_2$\n- Produce: ATP + NADPH\n\n**2. Calvin Cycle** (stroma)\n- Use ATP + NADPH to fix CO₂\n- Carbon fixation by RuBisCO enzyme\n- Produce: Glucose (G3P)\n\n### Factors Affecting Rate:\n- Light intensity\n- CO₂ concentration\n- Temperature\n- Water availability\n\n### Chloroplast Structure:\n- **Thylakoids**: Stacked into grana — light reactions occur here\n- **Stroma**: Fluid surrounding thylakoids — Calvin cycle occurs here\n\n**You might also want to know:**\n- What is the difference between C3, C4, and CAM plants?\n- How does cellular respiration relate to photosynthesis?\n- What is the role of chlorophyll in light absorption?",
+        "thinking": "Photosynthesis. Light reactions, Calvin cycle, equation. Core biology topic.",
+    },
+    "what is evolution": {
+        "answer": "## Evolution — Change in Species Over Time\n\n### Darwin's Theory of Natural Selection:\n1. **Variation**: Individuals differ in traits\n2. **Competition**: Resources are limited\n3. **Selection**: Individuals with advantageous traits survive and reproduce more\n4. **Inheritance**: Traits are passed to offspring\n\n### Evidence for Evolution:\n- **Fossil record**: Shows gradual changes over time\n- **Comparative anatomy**: Homologous structures (human arm vs whale flipper)\n- **Molecular biology**: DNA similarities across species\n- **Biogeography**: Island species similar to nearby mainland\n- **Embryology**: Similar embryonic development across vertebrates\n\n### Key Concepts:\n- **Speciation**: Formation of new species (geographic isolation + divergence)\n- **Adaptation**: Traits that improve survival\n- **Genetic Drift**: Random changes in small populations\n- **Gene Flow**: Migration introduces new alleles\n\n### Hardy-Weinberg Equilibrium:\n$$p^2 + 2pq + q^2 = 1$$\nwhere $p$ + $q$ = 1 (allele frequencies)\n\n**You might also want to know:**\n- What is the difference between microevolution and macroevolution?\n- How does speciation occur?\n- What are the types of natural selection?",
+        "thinking": "Evolution fundamentals. Natural selection, evidence, Hardy-Weinberg. Core biology.",
+    },
+    # ─── COMPUTER SCIENCE ───
+    "what is data structures and algorithms": {
+        "answer": "## Data Structures & Algorithms (DSA)\n\n### Core Data Structures:\n| Structure | Access | Search | Insert | Delete |\n|---|---|---|---|---|\n| **Array** | O(1) | O(n) | O(n) | O(n) |\n| **Linked List** | O(n) | O(n) | O(1) | O(1) |\n| **Stack** (LIFO) | O(1) | O(n) | O(1) | O(1) |\n| **Queue** (FIFO) | O(1) | O(n) | O(1) | O(1) |\n| **Hash Table** | — | O(1) avg | O(1) avg | O(1) avg |\n| **BST** | O(log n) | O(log n) | O(log n) | O(log n) |\n\n### Essential Algorithms:\n\n**Sorting:**\n- Bubble: O(n²) — simple but slow\n- Merge: O(n log n) — divide & conquer, stable\n- Quick: O(n log n) avg — fast, in-place\n\n**Searching:**\n- Linear: O(n)\n- Binary: O(log n) — requires sorted array\n\n**Graph:**\n- BFS: Level-by-level traversal\n- DFS: Deep exploration first\n- Dijkstra: Shortest path\n\n### Big O Notation:\n$$O(1) < O(\\log n) < O(n) < O(n \\log n) < O(n^2) < O(2^n)$$\n\n**You might also want to know:**\n- How to implement binary search step by step?\n- What is dynamic programming?\n- How to solve tree/graph problems?",
+        "thinking": "DSA fundamentals. Complexity table, sorting, searching, graphs. Core CS topic every programmer must know.",
+    },
+    "what is operating system": {
+        "answer": "## Operating Systems (OS)\n\nSoftware that manages hardware and provides services for programs.\n\n### Core Functions:\n- **Process Management**: Create, schedule, terminate processes\n- **Memory Management**: Allocate/deallocate RAM, virtual memory\n- **File System**: Organize data on storage devices\n- **I/O Management**: Handle device drivers and peripherals\n- **Security**: User authentication, access control\n\n### Process Scheduling:\n| Algorithm | Type | Advantage |\n|---|---|---|\n| **FCFS** | Non-preemptive | Simple |\n| **SJF** | Non-preemptive | Minimum avg wait |\n| **Round Robin** | Preemptive | Fair, good for time-sharing |\n| **Priority** | Both | Urgent tasks first |\n\n### Key Concepts:\n- **Deadlock**: Processes blocked waiting for each other\n  - Conditions: Mutual exclusion, Hold & wait, No preemption, Circular wait\n- **Virtual Memory**: Uses disk as extended RAM (paging)\n- **Context Switch**: Saving/restoring process state\n- **Threads vs Processes**: Threads share memory, processes don't\n\n### Examples:\nWindows, Linux, macOS, Android, iOS\n\n**You might also want to know:**\n- How does virtual memory and paging work?\n- What is a deadlock and how to prevent it?\n- How does Linux differ from Windows internally?",
+        "thinking": "Operating systems fundamentals. Process management, scheduling, deadlock. Core CS topic.",
+    },
+    "what is object oriented programming": {
+        "answer": "## Object-Oriented Programming (OOP)\n\nA programming paradigm based on objects that contain data and behavior.\n\n### Four Pillars:\n\n**1. Encapsulation**\nBundling data + methods, hiding internals.\n```python\nclass BankAccount:\n    def __init__(self):\n        self.__balance = 0  # private\n    def deposit(self, amount):\n        self.__balance += amount\n```\n\n**2. Inheritance**\nChild class inherits from parent class.\n```python\nclass Animal:\n    def speak(self): pass\nclass Dog(Animal):\n    def speak(self): return \"Woof!\"\n```\n\n**3. Polymorphism**\nSame interface, different behavior.\n```python\ndef make_sound(animal: Animal):\n    print(animal.speak())  # Works for Dog, Cat, etc.\n```\n\n**4. Abstraction**\nHide complexity, show only essentials.\n```python\nfrom abc import ABC, abstractmethod\nclass Shape(ABC):\n    @abstractmethod\n    def area(self): pass\n```\n\n### OOP vs Functional:\n| OOP | Functional |\n|---|---|\n| State + behavior together | Pure functions, no side effects |\n| Objects communicate | Data flows through functions |\n| Java, C++, Python | Haskell, Elixir, Lisp |\n\n**You might also want to know:**\n- What are design patterns in OOP?\n- What is SOLID principle?\n- When to use OOP vs functional programming?",
+        "thinking": "OOP fundamentals. Four pillars with Python code examples. Core CS concept.",
+    },
+    "what is database management": {
+        "answer": "## Database Management Systems (DBMS)\n\nSoftware to store, retrieve, and manage data efficiently.\n\n### Types:\n- **Relational (SQL)**: Tables with rows/columns — MySQL, PostgreSQL, SQLite\n- **NoSQL**: Flexible schemas — MongoDB (document), Redis (key-value), Neo4j (graph)\n- **Cloud**: Firestore, DynamoDB, Cosmos DB\n\n### SQL Essentials:\n```sql\n-- Create\nCREATE TABLE students (id INT PRIMARY KEY, name VARCHAR(100), grade FLOAT);\n\n-- Insert\nINSERT INTO students VALUES (1, 'Alice', 95.5);\n\n-- Query\nSELECT name, grade FROM students WHERE grade > 90 ORDER BY grade DESC;\n\n-- Join\nSELECT s.name, c.title FROM students s\nJOIN enrollments e ON s.id = e.student_id\nJOIN courses c ON e.course_id = c.id;\n```\n\n### Normalization:\n- **1NF**: No repeating groups\n- **2NF**: No partial dependencies\n- **3NF**: No transitive dependencies\n- **BCNF**: Every determinant is a candidate key\n\n### ACID Properties:\n- **Atomicity**: All or nothing\n- **Consistency**: Valid state to valid state\n- **Isolation**: Concurrent transactions don't interfere\n- **Durability**: Committed data survives crashes\n\n**You might also want to know:**\n- SQL vs NoSQL — when to use which?\n- How to design a database schema?\n- What is indexing and how does it speed up queries?",
+        "thinking": "Database management fundamentals. SQL, types, normalization, ACID. Core CS topic.",
+    },
 }
 
 # Additional keyword → answer mappings for common queries
 GREETING_RESPONSES = {
     "hi": "Hey there! 👋 I'm **Credon AI**, your intelligent assistant. How can I help you today?\n\n**You might also want to know:**\n- What can Credon AI do?\n- Tell me a fun fact\n- Help me with a coding problem",
+    "hii": "Hey there! 👋 I'm **Credon AI**, your intelligent assistant. How can I help you today?\n\n**You might also want to know:**\n- What can Credon AI do?\n- Tell me a fun fact\n- Help me with a coding problem",
+    "hiii": "Hey there! 👋 I'm **Credon AI**, your intelligent assistant. How can I help you today?\n\n**You might also want to know:**\n- What can Credon AI do?\n- Tell me a fun fact\n- Help me with a coding problem",
     "hello": "Hello! 👋 I'm **Credon AI** — ready to search, think, and solve. What would you like to explore?\n\n**You might also want to know:**\n- What are your capabilities?\n- Search something for me\n- Help me understand a concept",
+    "hellooo": "Hello! 👋 I'm **Credon AI** — ready to search, think, and solve. What would you like to explore?\n\n**You might also want to know:**\n- What are your capabilities?\n- Search something for me\n- Help me understand a concept",
     "hey": "Hey! 👋 What's on your mind? I'm here to help with anything — research, math, coding, or just chatting!\n\n**You might also want to know:**\n- What can you do?\n- Explain something to me\n- Help me with my work",
+    "hola": "¡Hola! 👋 I'm **Credon AI**. How can I help you today?\n\n**You might also want to know:**\n- What can you do?\n- Search something for me\n- Help me understand a concept",
+    "yo": "Yo! 👋 What's good? I'm Credon AI — here to help with anything you need!\n\n**You might also want to know:**\n- What can you do?\n- Search the web for something\n- Help me with coding",
+    "sup": "Hey! 👋 What's up? I'm Credon AI — ready when you are!\n\n**You might also want to know:**\n- What can you do?\n- Help me with a problem\n- Search for something",
     "good morning": "Good morning! ☀️ Hope you're having a great start to your day. What can I help you with?\n\n**You might also want to know:**\n- What's the latest news?\n- Give me a productivity tip\n- Help me plan my day",
     "good afternoon": "Good afternoon! 🌤️ How can I assist you today?\n\n**You might also want to know:**\n- Search something for me\n- Help me with a problem\n- Teach me something new",
     "good evening": "Good evening! 🌙 What would you like to explore or learn about?\n\n**You might also want to know:**\n- Summarize a topic for me\n- Help me with homework\n- Tell me something interesting",
@@ -152,7 +264,7 @@ GREETING_RESPONSES = {
 
 # ── Self-Learning Store ──────────────────────────────────────────
 
-_learned_qa: list[dict[str, str]] = []
+_learned_qa: list[dict[str, Any]] = []
 
 
 def _looks_math_query(text: str) -> bool:
@@ -196,22 +308,28 @@ def _save_learned() -> None:
 
 
 def learn_from_conversation(question: str, answer: str, confidence: str = "medium") -> None:
-    """Save a Q&A pair so Credon gets smarter over time.
+    """IMPROVED: Stricter quality filters for self-learning.
     Called after every successful answer generation."""
     if not question.strip() or not answer.strip():
         return
-    if len(answer) < 20:  # Skip trivially short answers
+    if len(answer) < 50:  # Increased from 20
         return
     if confidence == "low":
         return
 
     q = question.strip().lower()
+
+    # EXPANDED blocked question patterns
     blocked_question_markers = [
         "[replying to previous answer]",
         "[user attached",
-        "summarize this in",
-        "explain this in simpler words",
+        "summarize this",
+        "explain this in simpler",
         "regenerate",
+        "simplify",
+        "tl;dr",
+        "can you explain",
+        "what are the latest",
     ]
     if any(marker in q for marker in blocked_question_markers):
         return
@@ -219,12 +337,15 @@ def learn_from_conversation(question: str, answer: str, confidence: str = "mediu
     if len(q.split()) <= 2 and q not in {"who am i", "what is my name"}:
         return
 
+    # EXPANDED blocked answer patterns
     blocked_answer_markers = [
         "while i'm building a deeper understanding",
         "try enabling web search",
-        "i'm continuously learning and improving",
-            "analyzing the query and searching my knowledge base",
-            "building a comprehensive response based on available information",
+        "i'm continuously learning",
+        "analyzing the query and searching",
+        "building a comprehensive response",
+        "here's what i found about",
+        "huntington ingalls",  # Specific bad example
     ]
     if any(marker in answer.lower() for marker in blocked_answer_markers):
         return
@@ -234,6 +355,13 @@ def learn_from_conversation(question: str, answer: str, confidence: str = "mediu
     if "backend" in answer.lower() and "running" in answer.lower():
         return
     if "warming up" in answer.lower():
+        return
+
+    # NEW: Relevance check - question and answer should share keywords
+    q_words = set(re.findall(r'\w{4,}', q))
+    a_words = set(re.findall(r'\w{4,}', answer.lower()))
+    overlap = len(q_words & a_words)
+    if overlap < 2:  # At least 2 shared meaningful words
         return
 
     entry = {
@@ -266,20 +394,37 @@ def _similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, a.lower(), b.lower()).ratio()
 
 
+_STOPWORDS = {
+    "what", "is", "are", "the", "a", "an", "in", "on", "for", "to", "of", "and", "or",
+    "how", "why", "when", "where", "who", "with", "about", "tell", "me", "explain", "simple",
+}
+
+
+def _key_terms(text: str) -> set[str]:
+    return {
+        w for w in re.findall(r"[a-zA-Z0-9_]{3,}", text.lower())
+        if w not in _STOPWORDS
+    }
+
+
 def find_learned_answer(query: str) -> dict[str, str] | None:
     """Search learned Q&A pairs for a similar past answer."""
     q = query.strip().lower()
     best_match = None
     best_score = 0.0
 
+    q_terms = _key_terms(q)
     for entry in _learned_qa:
+        e_terms = _key_terms(entry["question"])
+        if q_terms and e_terms and len(q_terms & e_terms) < 2:
+            continue
         score = _similarity(q, entry["question"])
         if score > best_score:
             best_score = score
             best_match = entry
 
-    # Require >70% match to return a learned answer
-    if best_match and best_score > 0.70:
+    # Require stronger match to avoid unrelated learned answers.
+    if best_match and best_score > 0.68:
         return best_match
     return None
 
@@ -329,30 +474,72 @@ def _try_math(query: str) -> str | None:
 # ── Main Brain Interface ─────────────────────────────────────────
 
 def credon_think(query: str, sources: list[dict[str, Any]] | None = None) -> str:
-    """Generate a thinking/reasoning trace for the query."""
+    """Generate a thinking/reasoning trace for the query — structured like DeepSeek's chain-of-thought."""
     q = query.strip().lower()
     q_norm = re.sub(r"\bai\b", "artificial intelligence", q)
 
     # Check knowledge base
     for key, entry in KNOWLEDGE_BASE.items():
         if _similarity(q_norm, key) > 0.65:
-            return entry.get("thinking", "Analyzing query using built-in knowledge. High confidence.")
+            thinking = entry.get("thinking", "")
+            if thinking:
+                return (
+                    f"Hmm, the user is asking about \"{query}\". "
+                    f"This is a topic I know well from my knowledge base.\n\n"
+                    f"{thinking}\n\n"
+                    f"I'll provide a comprehensive, well-structured answer with clear explanations and follow-up suggestions."
+                )
+            return f"The user asks about \"{query}\". I have strong knowledge on this topic. Will provide a thorough answer."
 
     # Check if math
     if _try_math(query):
-        return "Mathematical expression detected. Computing directly using Credon's built-in math engine. High confidence."
+        return (
+            f"This is a mathematical expression: \"{query}\". "
+            "I'll compute this directly using my built-in math engine. "
+            "Let me break it down step by step and show the work."
+        )
 
-    # Check sources
-    if sources:
-        titles = [s.get("title", "")[:50] for s in sources[:3]]
-        return f"Analyzing {len(sources)} web sources. Most relevant: {', '.join(titles)}. Will synthesize key points into a comprehensive answer."
+    # Check sources — structured analysis
+    if sources and len(sources) >= 2:
+        titles = [s.get("title", "")[:60] for s in sources[:4]]
+        snippets_preview = "; ".join(
+            (s.get("snippet", "")[:80] + "...") for s in sources[:3] if s.get("snippet")
+        )
+        return (
+            f"The user asks: \"{query}\"\n\n"
+            f"I have {len(sources)} sources to work with. Let me analyze them:\n"
+            f"- Sources: {', '.join(titles)}\n"
+            f"- Key content: {snippets_preview}\n\n"
+            f"My approach: I'll synthesize the most relevant information from these sources, "
+            f"identify the main points, check for consensus across sources, and compose "
+            f"a clear, well-structured answer with proper formatting."
+        )
+    elif sources and len(sources) == 1:
+        title = sources[0].get("title", "Source")
+        return (
+            f"The user asks: \"{query}\"\n\n"
+            f"I have one source: \"{title}\". I'll extract the key information and "
+            f"supplement with my built-in knowledge to provide a complete answer."
+        )
 
     # Check learned
     learned = find_learned_answer(query)
     if learned:
-        return f"Found a similar question in my knowledge base (confidence: {learned.get('confidence', 'medium')}). Adapting previous answer."
+        return (
+            f"I've seen a similar question before (confidence: {learned.get('confidence', 'medium')}). "
+            f"Let me adapt my previous answer to best fit this specific query."
+        )
 
-    return "Analyzing the query and searching my knowledge base. Will provide the best answer I can."
+    # General reasoning
+    word_count = len(q.split())
+    if word_count <= 4:
+        return f"Simple query: \"{query}\". I'll give a concise, direct answer."
+    return (
+        f"Analyzing: \"{query}\"\n\n"
+        f"This looks like a {'complex' if word_count > 12 else 'moderate'} question. "
+        f"I'll search my knowledge base, evaluate what I know, and provide "
+        f"the best possible answer with supporting details."
+    )
 
 
 def credon_answer(
@@ -366,102 +553,132 @@ def credon_answer(
     q = query.strip().lower()
     q_norm = re.sub(r"\bai\b", "artificial intelligence", q)
 
-    # 1. Check greetings
+    # 1. Check greetings — normalize repeated chars (hiii→hi, hellooo→hello)
+    q_greeting = re.sub(r'(.)\1{2,}', r'\1\1', q)  # collapse 3+ repeats to 2
+    for greeting, response in GREETING_RESPONSES.items():
+        if q_greeting == greeting or q == greeting:
+            return response
     for greeting, response in GREETING_RESPONSES.items():
         if q == greeting or q.startswith(greeting + " ") or q.rstrip("!?.") == greeting:
             return response
 
-    # 2. Check exact knowledge base matches
+    q_terms = _key_terms(q_norm)
+
+    # 2. Multi-strategy knowledge matching with relevance guard
+    best_match = None
+    best_score = 0.0
+
     for key, entry in KNOWLEDGE_BASE.items():
+        key_terms = _key_terms(key)
+        term_overlap = len(q_terms & key_terms) if q_terms and key_terms else 0
+
+        # For content queries, skip entries with no meaningful term overlap.
+        if q_terms and term_overlap == 0:
+            continue
+
+        # Strategy 1: Direct similarity
         sim = _similarity(q_norm, key)
-        if sim > 0.65:
-            return entry["answer"]
+        if sim > best_score:
+            best_score = sim
+            best_match = entry
 
-    # 3. Partial knowledge base matching (keyword overlap)
-    q_words = set(q_norm.split())
-    for key, entry in KNOWLEDGE_BASE.items():
+        # Strategy 2: Keyword overlap (NEW)
+        q_words = set(q_norm.split())
         key_words = set(key.split())
-        overlap = len(q_words & key_words) / max(len(key_words), 1)
-        if overlap > 0.6 and len(q_words & key_words) >= 2:
-            return entry["answer"]
+        overlap = len(q_words & key_words)
+        keyword_score = overlap / max(len(key_words), 1)
 
-    # 4. Try math
+        if keyword_score > 0.5 and overlap >= 2:
+            if keyword_score > best_score:
+                best_score = keyword_score
+                best_match = entry
+
+    # Keep threshold moderate but enforce relevance through term overlap guard above.
+    if best_match and best_score > 0.58:
+        return best_match["answer"]
+
+    # 3. Try math
     math_answer = _try_math(query)
     if math_answer:
         return math_answer
 
-    # 5. Check learned Q&A pairs
+    # 4. Check learned Q&A with LOWER threshold
     learned = find_learned_answer(query)
     if learned:
         return learned["answer"]
 
-    # 6. If we have web sources, build an answer from them
+    # 5. IMPROVED: Source synthesis with better prompts
     if sources:
-        return _answer_from_sources(query, sources, target_language)
+        return _answer_from_sources_improved(query, sources, target_language)
 
-    # 7. No answer available from Brain
+    # 6. No answer available from Brain
     return None
 
 
-def _answer_from_sources(
+def _answer_from_sources_improved(
     query: str,
     sources: list[dict[str, Any]],
     target_language: str,
 ) -> str:
-    """Synthesize an answer from web sources when no AI model is available."""
-    points: list[str] = []
-    source_refs: list[str] = []
+    """Better source synthesis - clearer and more direct."""
+    if not sources:
+        if target_language == "hinglish":
+            return (
+                f"'{query}' ke baare mein mujhe sources nahi mile. "
+                "Web search enable karo ya question ko specific banao."
+            )
+        return (
+            f"I couldn't find sources for **\"{query}\"**. "
+            "Try enabling web search or making your question more specific."
+        )
+
+    # Extract best points from sources
+    main_point = ""
+    supporting_points: list[str] = []
 
     for s in sources[:4]:
         snippet = (s.get("snippet") or "").strip()
-        title = s.get("title", "Source")
-        url = s.get("url", "")
-        if snippet:
-            sentences = re.split(r"(?<=[.!?])\s+", snippet)
-            clean = " ".join(sentences[:2])[:280]
-            clean = re.sub(r"\s+", " ", clean).strip()
-            if clean:
-                points.append(clean)
-            if url:
-                source_refs.append(f"[{title}]({url})")
+        if not snippet:
+            continue
 
-    if not points:
-        return (
-            f"I searched for information about **\"{query}\"** but couldn't extract detailed content.\n\n"
-            f"Try rephrasing your question with more specific terms!\n\n"
-            f"**You might also want to know:**\n"
-            f"- Can you break this down differently?\n"
-            f"- What specific aspect interests you?\n"
-            f"- Try enabling web search for better results"
-        )
+        # Take first strong sentence as main point
+        sentences = re.split(r'(?<=[.!?])\s+', snippet)
+        clean_sentences = [sent.strip() for sent in sentences if len(sent.strip()) > 20]
 
-    lead = points[0]
-    extras = points[1:4]
-    refs = "\n".join(f"- {r}" for r in source_refs[:3])
+        if not main_point and clean_sentences:
+            main_point = clean_sentences[0]
+        elif clean_sentences:
+            supporting_points.append(clean_sentences[0])
 
+    if not main_point:
+        main_point = "Based on available sources"
+
+    # Build answer based on language
     if target_language == "hinglish":
-        extra_block = "\n".join(f"- {p}" for p in extras)
+        support_text = "\n".join(f"- {p}" for p in supporting_points[:2])
         return (
-            f"Simple answer: {lead}\n\n"
-            f"Agar easy terms mein samjhein, toh main points yeh hain:\n"
-            f"{extra_block if extra_block else '- Is topic ke liye official source verify karna best hai.'}\n\n"
-            f"**Sources:**\n{refs}\n\n"
-            f"**Aap yeh bhi pooch sakte ho:**\n"
-            f"- Isko aur simple mein samjhao\n"
-            f"- Iske latest updates kya hain?\n"
-            f"- Koi related topic explore karein?"
+            f"**{query}** ke baare mein:\n\n"
+            f"{main_point}\n\n"
+            f"**Main points:**\n{support_text}\n\n"
+            f"**Sources:**\n" +
+            "\n".join(f"- [{s['title']}]({s['url']})" for s in sources[:3]) +
+            "\n\n**Aap yeh bhi pooch sakte ho:**\n"
+            "- Isko aur detail mein samjhao?\n"
+            "- Koi example do?\n"
+            "- Related topics kya hain?"
         )
 
-    extra_block = "\n".join(f"- {p}" for p in extras)
+    support_text = "\n".join(f"- {p}" for p in supporting_points[:2])
     return (
-        f"Short answer: {lead}\n\n"
-        f"In simpler terms, the key points are:\n"
-        f"{extra_block if extra_block else '- Check official sources for exact details.'}\n\n"
-        f"**Sources:**\n{refs}\n\n"
-        f"**You might also want to know:**\n"
-        f"- Can you explain this in simpler terms?\n"
-        f"- What are the latest developments?\n"
-        f"- Are there related topics to explore?"
+        f"**{query}**\n\n"
+        f"{main_point}\n\n"
+        f"**Key points:**\n{support_text}\n\n"
+        f"**Sources:**\n" +
+        "\n".join(f"- [{s['title']}]({s['url']})" for s in sources[:3]) +
+        "\n\n**You might also want to know:**\n"
+        "- Can you explain this in more detail?\n"
+        "- Can you give an example?\n"
+        "- What are related topics?"
     )
 
 

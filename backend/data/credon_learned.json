@@ -118,5 +118,125 @@
     "answer": "Short answer: What are folds in geological structures? Explain their origin and classiﬁcation with examples.\n\nIn simpler terms, the key points are:\n- ibe the common textures and structures found in igneous rocks. This question is basically igneous rocks doing a full résumé.\n- sign Dam foundation analysis Slope stability studies Helps in selecting excavation methods Assists in estimating construction risks Conclusion Core Recovery and RQD are simple but powerful indices used to assess subsurface rock quality. RQD is more reliable than core recovery for\n- se: To understand regional geology and possible hazards. 2.\n\n**Sources:**\n- [Source](credon://knowledge/pdf-7c2cce55a1#37)\n- [Source](credon://knowledge/pdf-7c2cce55a1#29)\n- [Source](credon://knowledge/pdf-7c2cce55a1#58)",
     "confidence": "medium",
     "learned_at": "2026-03-03T20:19:09.900683+00:00"
+  },
+  {
+    "question": "explain machine learning simply",
+    "answer": "**Machine Learning (ML)** is a subset of AI where systems learn from data without being explicitly programmed.\n\n### Types of ML:\n1. **Supervised Learning** — Learns from labeled data (classification, regression)\n2. **Unsupervised Learning** — Finds patterns in unlabeled data (clustering)\n3. **Reinforcement Learning** — Learns through trial and reward\n\n### Popular Algorithms:\n- Linear/Logistic Regression\n- Decision Trees & Random Forests\n- Support Vector Machines\n- Neural Networks\n- K-Means Clustering\n\n### Tools & Frameworks:\n- **Python**: scikit-learn, TensorFlow, PyTorch\n- **R**: caret, randomForest\n\nML powers recommendation systems (Netflix, Spotify), fraud detection, medical diagnosis, and self-driving cars.",
+    "confidence": "high",
+    "learned_at": "2026-03-04T03:57:53.487579+00:00"
+  },
+  {
+    "question": "what can you do",
+    "answer": "I'm **Credon AI** — your intelligent assistant! Here's what I can help with:\n\n### 🔍 **Research & Search**\n- Search the web for latest information\n- Find and summarize articles\n- Compare different viewpoints\n\n### 🧮 **Math & Science**\n- Solve equations step-by-step\n- Explain scientific concepts\n- Help with physics, chemistry, biology\n\n### 💻 **Coding & Tech**\n- Write and debug code\n- Explain programming concepts\n- Help with web development, Python, JavaScript, and more\n\n### 💡 **General Knowledge**\n- Answer questions on any topic\n- Explain complex topics simply\n- Help with writing and analysis\n\n### 🎨 **Creative**\n- Help with writing and brainstorming\n- Generate ideas and suggestions\n\nI think through problems carefully, show my reasoning, and learn from every conversation to get smarter!",
+    "confidence": "high",
+    "learned_at": "2026-03-04T04:56:45.948948+00:00"
+  },
+  {
+    "question": "how does credon ai work?",
+    "answer": "**Artificial Intelligence (AI)** is the simulation of human intelligence by machines. It encompasses:\n\n- **Machine Learning**: Systems that learn from data\n- **Deep Learning**: Neural networks with multiple layers\n- **Natural Language Processing**: Understanding human language\n- **Computer Vision**: Interpreting visual information\n- **Robotics**: Physical AI agents\n\nAI is transforming healthcare, finance, transportation, and virtually every industry. Modern AI like large language models (LLMs) can understand context, generate text, write code, and reason through complex problems.",
+    "confidence": "medium",
+    "learned_at": "2026-03-04T04:58:36.028120+00:00"
+  },
+  {
+    "question": "what is quantum computing in simple terms?",
+    "answer": "## Introduction to Quantum Computing\nQuantum computing is a new type of computing that uses the principles of quantum mechanics to solve complex problems that classical computers can't. It's based on a branch of physics that deals with really tiny things, and it uses special units called qubits for calculations.\n\n## How it Works\nUnlike classical computers, quantum computers leverage quantum physics to access unique computational abilities. This means they can perform multiple calculations concurrently, making them potentially much faster than classical computers for certain types of problems.\n\n## Key Points\n* Quantum computing uses quantum mechanics\n* It solves complex problems that classical computers can't\n* Qubits are used for calculations, differentiating it from classical computing",
+    "confidence": "high",
+    "learned_at": "2026-03-04T09:53:31.322497+00:00"
+  },
+  {
+    "question": "latest ai trends in 2026 with sources",
+    "answer": "### Latest AI Trends in 2026\n\nBased on the provided sources, the latest AI trends in 2026 include:\n\n* **Generative AI in DevOps**: Transforming DevOps with benefits, limitations, and emerging trends, such as PromptOps and Scaling Generative Troubleshooting.\n* **AI Agents**: The AI agent ecosystem is expanding, with various frameworks like CrewAI, LangGraph, and AutoGen, and a comparison of open-source AI agent frameworks.\n* **AI-Powered Image Search**: AI reverse image search tools, such as Lenso.ai, that utilize facial recognition to find images in seconds.\n* **Embedded AI in Business Workflows**: The transition from isolated AI features to embedding AI directly into business workflows is a key trend in 2026, driving business growth and automation.\n\nThese trends are expected to shape the AI landscape in 2026, with a focus on practical applications and integration into various industries.",
+    "confidence": "high",
+    "learned_at": "2026-03-04T11:15:19.826787+00:00"
+  },
+  {
+    "question": "what is python programming?",
+    "answer": "## Introduction to Python Programming\nPython is a high-level, general-purpose programming language known for its simplicity, readability, and versatility. It is an interpreted, object-oriented language with dynamic semantics, making it a popular choice for various purposes, including web development, software development, mathematics, and data analysis.\n\n### Key Features of Python\n* High-level built-in data structures\n* Simple syntax and readability\n* Object-oriented programming paradigm\n* Extensive libraries and frameworks\n* Easy to learn and use\n\nPython's simplicity and readability make it an ideal language for beginners and experienced developers alike. Its versatility and extensiveness have led to its widespread adoption in various industries and applications.",
+    "confidence": "high",
+    "learned_at": "2026-03-04T11:16:28.653459+00:00"
+  },
+  {
+    "question": "can you help me with  coding",
+    "answer": "## Coding Help for CSE Student\nIt seems like you're a CSE student at DBATU, and you need help with a coding question. However, the provided sources are related to Engineering Geology, which doesn't seem directly related to coding.\n\nTo better assist you, could you please provide more information about the coding question you're struggling with? This includes:\n* The programming language you're using (e.g., Python, Java, C++)\n* The specific problem or assignment you're working on\n* Any relevant code snippets or details about the project\n\nThis will help me provide a more accurate and helpful response to your coding question.",
+    "confidence": "high",
+    "learned_at": "2026-03-04T11:32:06.405254+00:00"
+  },
+  {
+    "question": "what  is in this image",
+    "answer": "There is no image provided for analysis. The available sources discuss various topics related to geology and engineering, including dam foundations, grouting, and geological considerations. However, without an actual image to examine, it's impossible to determine what's in it.",
+    "confidence": "high",
+    "learned_at": "2026-03-04T12:03:54.888737+00:00"
+  },
+  {
+    "question": "what is today ?",
+    "answer": "To determine today's date, I would need to access a real-time data source or a clock. However, based on the provided sources, I can suggest some ways to find out today's date.\n\nYou can visit any of the websites mentioned in the sources, such as NationalToday, Solvezi, or TodayDateTime, to find out today's date and other information like current time, day of the week, and upcoming celebrations.\n\nHere's a general idea of what you can expect to find:\n* Current date\n* Day of the week\n* Time zone and GMT offset\n* Upcoming holidays and celebrations",
+    "confidence": "high",
+    "learned_at": "2026-03-04T15:35:14.154151+00:00"
+  },
+  {
+    "question": "what is newton's laws of motion",
+    "answer": "## Newton's Three Laws of Motion\n\n### First Law (Inertia)\nAn object at rest stays at rest, and an object in motion stays in motion with the same velocity, unless acted upon by an external force.\n$$\\sum \\vec{F} = 0 \\implies \\vec{v} = \\text{constant}$$\n\n### Second Law (Force & Acceleration)\nThe acceleration of an object is directly proportional to the net force and inversely proportional to its mass.\n$$\\vec{F} = m\\vec{a}$$\n\n### Third Law (Action-Reaction)\nFor every action, there is an equal and opposite reaction.\n$$\\vec{F}_{12} = -\\vec{F}_{21}$$\n\n### Examples:\n- **1st Law**: A book on a table stays still until pushed\n- **2nd Law**: A heavier car needs more force to accelerate\n- **3rd Law**: Rocket exhaust pushes down → rocket goes up",
+    "confidence": "high",
+    "learned_at": "2026-03-04T15:48:34.507206+00:00"
+  },
+  {
+    "question": "explain the following in very simple words, like i'm a beginner. use short sentences:\n\n## current time\nas a large language model, i don't have access to real-time information, so i won't be able to provide the current time. my training data is based on a fixed dataset and does not include dynamic or real-time information.\n\n## alternative options\nif you need to know the current time, i suggest checking a reliable online clock or a device that is connected to the internet, such as a smartphone or a computer.\n\n## understanding time concepts\nhowever, if you're interested in learning more about the concept of time or how it's measured, i can provide information on that topic.",
+    "answer": "**Explain the following in very simple words, like I'm a beginner. Use short sentences:\n\n## Current Time\nAs a large language model, I don't have access to real-time information, so I won't be able to provide the current time. My training data is based on a fixed dataset and does not include dynamic or real-time information.\n\n## Alternative Options\nIf you need to know the current time, I suggest checking a reliable online clock or a device that is connected to the internet, such as a smartphone or a computer.\n\n## Understanding Time Concepts\nHowever, if you're interested in learning more about the concept of time or how it's measured, I can provide information on that topic.**\n\nsetup Gravity anomaly curve Underline principle, applications, foundation, groundwater.\n\n**Key points:**\n- ss porosity, permeability, and strength for construction purposes.\n- main types of bridges used in civil engineering, and how do geological conditions aﬀect the choice of bridge type?\n\n**Sources:**\n- [Source](credon://knowledge/pdf-7c2cce55a1#62)\n- [Source](credon://knowledge/pdf-7c2cce55a1#34)\n- [Source](credon://knowledge/pdf-7c2cce55a1#74)",
+    "confidence": "high",
+    "learned_at": "2026-03-04T15:56:10.419960+00:00"
+  },
+  {
+    "question": "explain the following in very simple words, like i'm a beginner. use short sentences:\n\nthe provided sources do not contain the current date, which is necessary to determine the day today. sources 1 and 2 provide information on current dates and events, but they do not explicitly state the current day. to find out the current day, i recommend checking a real-time source, such as a calendar or online date tool.",
+    "answer": "The provided information does not have the current date. \nThe sources talk about geology, phone numbers, and text tools, but not dates. \nTo find the current day, you need a real-time source like a calendar or online date tool.",
+    "confidence": "high",
+    "learned_at": "2026-03-04T18:37:52.152270+00:00"
+  },
+  {
+    "question": "how to use online calendars to find the current date.?",
+    "answer": "## Finding the Current Date Using Online Calendars\nTo find the current date using online calendars, you can use a website that provides the current date and time. One such website is mentioned in Source 4, which offers a tool to view the current date and time, including a date selection tool.\n\n### Steps to Find the Current Date:\n1. Visit a website that provides the current date and time, such as [Today's Date | Current date now](https://maxtables.com/tools/todays-date.html).\n2. The website will display the current date and time, along with a date selection tool.\n3. You can use the date selection tool to find the current date.\n\n### Notes:\n* Source 4 provides a direct and simple way to find the current date.\n* Other sources, such as Source 1 and Source 2, discuss more complex topics related to calendars and dates, but are not directly relevant to finding the current date.\n* Source 3 and Source 6 mention online calendars, but in the context of events and upcoming schedules.",
+    "confidence": "high",
+    "learned_at": "2026-03-04T18:42:57.638309+00:00"
+  },
+  {
+    "question": "the difference between \"hi\" and \"hey\" in various social contexts.?",
+    "answer": "## Difference between \"Hi\" and \"Hey\"\nIn various social contexts, \"hi\" and \"hey\" are both used as greetings, but they have different tones and levels of formality. \n\n* \"Hi\" is generally considered a more formal and traditional greeting, often used in professional or polite settings.\n* \"Hey\" is often seen as more informal and casual, similar to \"hello\" but with a more relaxed tone.\n\n### Usage in Different Contexts\nIn emails, starting with \"Dear\" is often considered the most formal, while \"Hi\" is a safer choice for professional emails. \"Hey\" is more commonly used in casual or social settings, such as texting or social media.\n\n### Examples\n* In a professional email, \"Hi\" or \"Dear\" might be more suitable, while \"Hey\" could come across as too casual.\n* In a text to a friend, \"Hey\" is often used as a casual greeting.",
+    "confidence": "high",
+    "learned_at": "2026-03-04T19:50:01.039046+00:00"
+  },
+  {
+    "question": "formal vs informal language: understanding the differences between formal and informal language can help you choose the right greeting for your context.?",
+    "answer": "**Formal vs Informal Language: Understanding the differences between formal and informal language can help you choose the right greeting for your context.?**\n\n18 July 2024 -If you are writing a formal email, you might begin the email with ‘Dear XXX’ whereas an informal greeting could be ‘Hey XXX’.\n\n**Key points:**\n- [informal] ...In formal language, words are generally longer.\n- But make a habit of always considering the situation and context of an interaction.\n\n**Sources:**\n- [Source](https://www.thelanguagegallery.com/blog/10-differences-between-formal-and-informal-language)\n- [Source](https://www.londonschool.com/blog/10-differences-between-formal-and-informal-language/)\n- [Source](https://www.busuu.com/en/languages/informal-vs-formal)",
+    "confidence": "high",
+    "learned_at": "2026-03-04T19:54:59.143254+00:00"
+  },
+  {
+    "question": "give 3 bullet points on newton laws",
+    "answer": "Here are three key points about Newton's laws:\n* **First Law (Law of Inertia)**: An object at rest will remain at rest, and an object in motion will continue to move with a constant velocity, unless acted upon by an external force.\n* **Second Law (Law of Acceleration)**: The force applied to an object is equal to the mass of the object multiplied by its acceleration, often expressed as F = ma.\n* **Third Law (Law of Action and Reaction)**: For every action, there is an equal and opposite reaction, meaning that when two objects interact, they apply forces to one another that are equal in magnitude and opposite in direction.",
+    "confidence": "high",
+    "learned_at": "2026-03-04T20:26:33.537140+00:00"
+  },
+  {
+    "question": "what is newton second law in simple words",
+    "answer": "## Newton's Three Laws of Motion\n\n### First Law (Inertia)\nAn object at rest stays at rest, and an object in motion stays in motion with the same velocity, unless acted upon by an external force.\n$$\\sum \\vec{F} = 0 \\implies \\vec{v} = \\text{constant}$$\n\n### Second Law (Force & Acceleration)\nThe acceleration of an object is directly proportional to the net force and inversely proportional to its mass.\n$$\\vec{F} = m\\vec{a}$$\n\n### Third Law (Action-Reaction)\nFor every action, there is an equal and opposite reaction.\n$$\\vec{F}_{12} = -\\vec{F}_{21}$$\n\n### Examples:\n- **1st Law**: A book on a table stays still until pushed\n- **2nd Law**: A heavier car needs more force to accelerate\n- **3rd Law**: Rocket exhaust pushes down → rocket goes up",
+    "confidence": "high",
+    "learned_at": "2026-03-05T07:02:00.694252+00:00"
+  },
+  {
+    "question": "what is quantum computing?",
+    "answer": "Arre yaar, quantum computing kya hai? Yeh ek aisi technology hai jo quantum mechanics ko use karti hai complex problems ko solve karne ke liye. Classical computers ke opposite, jo binary digits (0s and 1s) par based hote hain, quantum computers quantum bits ya qubits par based hote hain, jo multiple states (0, 1, aur dono) mein exist kar sakte hain.\n\nYe unique property, jo superposition aur entanglement kehte hain, quantum computers ko bahut fast aur powerful banati hai. Isse hum complex problems ko solve kar sakte hain, jaise ki cryptography, optimization, aur simulation, jo classical computers ke liye bahut mushkil hote hain.\n\nQuantum computing ki potential applications bahut saari fields mein hain, jaise ki physics, chemistry, aur materials science. Isse hum new materials aur drugs discover kar sakte hain, aur complex systems ko better understand kar sakte hain.\n\nToh, quantum computing ek revolutionary technology hai jo humari understanding aur problem-solving capabilities ko badal sakti hai. Abhi yeh field bahut rapid aur exciting development kar raha hai, aur humein dekhna hai ki yeh future mein kya-kya achieve kar sakta hai.\n\n**Aapko yeh bhi pasand aa sakta hai:**\n1. Quantum computing ke applications ko explore karna: Aap dekhiye ki quantum computing kis-kis fields mein use ho raha hai, jaise ki finance, healthcare, aur climate modeling.\n2. Quantum mechanics ke basics ko samajhna: Aap quantum mechanics ke fundamental principles ko samjhein, jaise ki wave-particle duality aur uncertainty principle.\n3. Quantum computing ke challenges ko janana: Aap dekhiye ki quantum computing ke kya-kya challenges hain, jaise ki error correction aur scalability, aur kaise researchers inhe overcome karne ki koshish kar rahe hain.",
+    "confidence": "high",
+    "learned_at": "2026-03-05T11:18:41.739031+00:00"
+  },
+  {
+    "question": "give info about this image",
+    "answer": "### Image Analysis\n\nUnfortunately, there is no specific image provided to analyze. However, the sources provided discuss various methods for finding information about an image.\n\n### Methods for Finding Image Information\n\n1. **Google Search Tools**: Sources 1, 2, and 3 discuss using Google Search tools to find more information about an image. These tools include:\n\t* \"About this image\" on Google Search\n\t* Using Google Lens to search with an image or screenshot\n\t* Swiping up in the Google App when viewing an image\n\t* Right-clicking or long-pressing on an image in Chrome (coming soon)\n2. **AI Image Describer**: Source 5 introduces an AI tool for describing images, generating captions, and extracting text from photos.\n3. **Tesseract OCR**: Source 6 mentions the need for Tesseract OCR setup to extract text from an uploaded image.\n\n### Image Details\n\nThe only image detail mentioned is in Source 6, which notes that an image was uploaded with dimensions of 1366x768px. However, without further context or analysis tools, no additional information can be provided about the image.\n\n### Conclusion\n\nTo find information about a specific image, you can try using the methods discussed in the sources, such as Google Search tools or AI image describers. If you have a specific image you would like to analyze, please provide more context or details about the image.",
+    "confidence": "high",
+    "learned_at": "2026-03-05T11:37:33.524575+00:00"
+  },
+  {
+    "question": "how to use google lens to search with an image or screenshot?",
+    "answer": "## Using Google Lens to Search with an Image or Screenshot\nGoogle Lens is a powerful tool that allows you to search for information using images or screenshots. Here's a step-by-step guide on how to use Google Lens on both mobile and desktop devices:\n\n### On Mobile Devices\n1. **Open the Google App**: On your Android phone or tablet, open the Google app.\n2. **Access Google Lens**: In the search bar, tap the **Google Lens** icon.\n3. **Take or Upload a Photo**: Take a new photo or upload an existing one from your gallery to use for your search.\n4. **Select the Area**: Select the area of the image you want to search for.\n5. **Get Results**: Google Lens will provide you with relevant search results based on the selected area of the image.\n\n### On Desktop\n1. **Go to Google Search**: Navigate to the Google search page on your desktop.\n2. **Click the Camera Icon**: Click on the camera icon located in the search bar.\n3. **Upload or Paste an Image**: Choose between uploading an image directly from your computer or pasting an image URL.\n4. **Get Results**: Google Lens will provide you with relevant search results based on the uploaded or pasted image.\n\n### Tips and Variations\n- You can also use Google Lens directly from the recent apps screen on your mobile device by long-pressing on an image and selecting the option to view it with Google Lens.\n- On desktop, you can use Google Lens in Chrome to search what you see on your screen.\n\nBy following these steps, you can easily use Google Lens to search for information using images or screenshots on both mobile and desktop devices.",
+    "confidence": "high",
+    "learned_at": "2026-03-05T11:38:51.600375+00:00"
   }
 ]

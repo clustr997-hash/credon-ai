@@ -97,6 +97,8 @@ Result: Credon uses user-uploaded docs/images + web + model reasoning together.
 ## 7) Environment Variables
 
 Core:
+- `MODEL_RUNTIME_MODE=auto` (`cloud` for production lock)
+- `USE_MODEL_GENERATION=true`
 - `USE_LOCAL_MODEL=true`
 - `OLLAMA_BASE_URL=http://localhost:11434`
 - `OLLAMA_MODEL=qwen3:8b`
@@ -107,6 +109,15 @@ Core:
 Cloud optional:
 - `DEEPSEEK_API_KEY=...`
 - `DEEPSEEK_BASE_URL=https://api.deepseek.com`
+- `DEEPSEEK_MODEL=deepseek-reasoner`
+- `GROQ_API_KEY=...`
+- `GROQ_BASE_URL=https://api.groq.com/openai/v1`
+- `GROQ_MODEL=llama-3.3-70b-versatile`
+
+Retrieval providers (optional but recommended in production):
+- `SERPER_API_KEY=...`
+- `LANGSEARCH_API_KEY=...`
+- `LANGSEARCH_BASE_URL=https://api.langsearch.com/v1/web-search`
 
 Firebase optional:
 - `FIREBASE_SERVICE_ACCOUNT_PATH=backend/secrets/firebase-service-account.json`

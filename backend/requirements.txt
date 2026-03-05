@@ -15,3 +15,5 @@ pypdf
 pypdfium2
 pillow
 pytesseract
+fpdf2
+psycopg[binary]

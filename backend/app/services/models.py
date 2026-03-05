@@ -1,8 +1,7 @@
-"""Multi-model orchestration layer with Ollama independence.
+"""Multi-model orchestration layer with production-safe failover.
 
-Supports multiple Ollama models (qwen, deepseek, llama, etc.) with
-automatic fallback when Ollama is unavailable. Credon AI stays
-functional even without Ollama — using built-in intelligence.
+Supports local Ollama + cloud providers (DeepSeek, Groq) with
+deterministic fallback order so behavior remains stable after deployment.
 """
 
 from __future__ import annotations
@@ -22,7 +21,7 @@ import requests
 class ModelInfo:
     id: str
     label: str
-    provider: str          # "ollama" | "cloud"
+    provider: str          # "ollama" | "deepseek" | "groq"
     description: str
     default: bool = False
 
@@ -33,7 +32,10 @@ _STATIC_MODELS: list[ModelInfo] = [
     ModelInfo("qwen3:4b", "Qwen 3 4B", "ollama", "Lightweight and quick"),
     ModelInfo("deepseek-r1:1.5b", "DeepSeek R1 1.5B", "ollama", "Compact local reasoning model"),
     ModelInfo("deepseek-r1:8b", "DeepSeek R1 8B", "ollama", "Deep reasoning model"),
-    ModelInfo("deepseek-chat", "DeepSeek Chat (Cloud)", "cloud", "DeepSeek cloud API model"),
+    ModelInfo("deepseek-reasoner", "DeepSeek R1 (Cloud)", "deepseek", "DeepSeek cloud reasoning model"),
+    ModelInfo("deepseek-chat", "DeepSeek Chat (Cloud)", "deepseek", "DeepSeek cloud chat model"),
+    ModelInfo("groq:llama-3.3-70b-versatile", "Groq Llama 3.3 70B", "groq", "Groq cloud fallback model"),
+    ModelInfo("groq:deepseek-r1-distill-llama-70b", "Groq DeepSeek R1 Distill 70B", "groq", "Groq reasoning fallback model"),
     ModelInfo("llama3.2:3b", "Llama 3.2 3B", "ollama", "Meta's compact model"),
     ModelInfo("gemma3:4b", "Gemma 3 4B", "ollama", "Google's efficient model"),
     ModelInfo("phi4-mini:3.8b", "Phi-4 Mini", "ollama", "Microsoft reasoning model"),
@@ -52,11 +54,48 @@ def _deepseek_api_key() -> str:
     return os.getenv("DEEPSEEK_API_KEY", "").strip()
 
 
-def _is_cloud_model(model: str) -> bool:
+def _groq_url() -> str:
+    return os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+
+
+def _groq_api_key() -> str:
+    return os.getenv("GROQ_API_KEY", "").strip()
+
+
+def _runtime_mode() -> str:
+    """Runtime mode: auto | cloud | local."""
+    mode = os.getenv("MODEL_RUNTIME_MODE", "auto").strip().lower()
+    return mode if mode in {"auto", "cloud", "local"} else "auto"
+
+
+def _deepseek_default_model() -> str:
+    return os.getenv("DEEPSEEK_MODEL", "deepseek-reasoner").strip() or "deepseek-reasoner"
+
+
+def _groq_default_model() -> str:
+    model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip() or "llama-3.3-70b-versatile"
+    return model if model.startswith("groq:") else f"groq:{model}"
+
+
+def _cloud_api_model(model: str) -> str:
+    if model.startswith("groq:"):
+        return model.split(":", 1)[1]
+    return model
+
+
+def _cloud_provider_for_model(model: str) -> str | None:
+    if model.startswith("groq:"):
+        return "groq"
+    if model.startswith("deepseek"):
+        return "deepseek"
     for item in _STATIC_MODELS:
-        if item.id == model:
-            return item.provider == "cloud"
-    return False
+        if item.id == model and item.provider in {"deepseek", "groq"}:
+            return item.provider
+    return None
+
+
+def _is_cloud_model(model: str) -> bool:
+    return _cloud_provider_for_model(model) is not None
 
 
 def list_available_models() -> list[dict[str, Any]]:
@@ -83,14 +122,15 @@ def list_available_models() -> list[dict[str, Any]]:
         remote_models = set()
 
     for m in _STATIC_MODELS:
-        if m.provider == "cloud":
+        if m.provider in {"deepseek", "groq"}:
+            provider_available = bool(_deepseek_api_key()) if m.provider == "deepseek" else bool(_groq_api_key())
             available.append({
                 "id": m.id,
                 "label": m.label,
-                "provider": m.provider,
+                "provider": "cloud",
                 "description": m.description,
                 "default": m.default,
-                "available": bool(_deepseek_api_key()),
+                "available": provider_available,
             })
             continue
         available.append({
@@ -117,11 +157,22 @@ def list_available_models() -> list[dict[str, Any]]:
 
 
 def default_model() -> str:
+    mode = _runtime_mode()
     env = os.getenv("OLLAMA_MODEL")
-    if env:
+    if mode != "cloud" and env:
         return env
+
+    if mode in {"auto", "cloud"}:
+        if _deepseek_api_key():
+            return _deepseek_default_model()
+        if _groq_api_key():
+            return _groq_default_model()
+
+    if mode == "cloud":
+        return _deepseek_default_model()
+
     for m in _STATIC_MODELS:
-        if m.default:
+        if m.default and m.provider == "ollama":
             return m.id
     return _STATIC_MODELS[0].id if _STATIC_MODELS else "qwen3:8b"
 
@@ -236,18 +287,18 @@ def _fallback_builtin_answer(messages: list[dict[str, str]]) -> str:
         if brain_with_sources:
             return brain_with_sources
 
-    # 3. Generic helpful response (NEVER says limited/lite/error)
+    # 3. Honest fallback — NEVER says "building understanding" / "try enabling web search" / "continuously learning"
     return (
-        f"Based on my analysis of **\"{question}\"**:\n\n"
-        f"This is an interesting question! While I'm building a deeper understanding "
-        f"of this topic, here's what I can suggest:\n\n"
-        f"- Try enabling web search (globe icon) for real-time information\n"
-        f"- Break your question into more specific parts for better answers\n"
-        f"- I'm continuously learning and improving!\n\n"
+        f"**{question}**\n\n"
+        f"I wasn't able to find a strong answer for this right now. "
+        f"Here's what might help:\n\n"
+        f"- Rephrase your question with more specific details\n"
+        f"- Break it into smaller, focused sub-questions\n"
+        f"- Provide additional context about what you need\n\n"
         f"**You might also want to know:**\n"
-        f"- Can you rephrase with more specific details?\n"
-        f"- What aspect interests you most?\n"
-        f"- Is there a related topic I can help with?"
+        f"- What specific aspect are you most interested in?\n"
+        f"- Can you give an example of what you're looking for?\n"
+        f"- Would a related topic be helpful?"
     )
 
 
@@ -255,32 +306,35 @@ def generate_stream(
     messages: list[dict[str, str]],
     model: str | None = None,
 ) -> Generator[str, None, None]:
-    """Stream tokens from an Ollama model with automatic fallback."""
+    """Stream tokens with deterministic fallback: selected → cloud → local → Brain."""
     chosen = model or default_model()
+    mode = _runtime_mode()
 
-    if _is_cloud_model(chosen):
-        # Try streaming from cloud
+    cloud_candidates = _cloud_retry_candidates(chosen)
+    for candidate in cloud_candidates:
         had_cloud_output = False
-        for token in _generate_cloud_stream(messages, chosen):
+        for token in _generate_cloud_stream(messages, candidate):
             had_cloud_output = True
             yield token
         if had_cloud_output:
             return
-        # Fall back to sync cloud
-        cloud_text = _generate_cloud_sync(messages, chosen)
+
+        cloud_text = _generate_cloud_sync(messages, candidate)
         if cloud_text:
             yield cloud_text
             return
+
+    if mode == "cloud":
         yield _fallback_builtin_answer(messages)
         return
 
-    # Check if Ollama is available AND model exists
-    if not _is_ollama_available(chosen):
-        print(f"[Credon] Ollama/{chosen} unavailable, using Brain fallback")
+    local_seed = chosen if not _is_cloud_model(chosen) else (os.getenv("OLLAMA_MODEL") or "qwen3:8b")
+    if not _is_ollama_available(local_seed):
+        print(f"[Credon] Ollama/{local_seed} unavailable, cloud exhausted, using Brain fallback")
         yield _fallback_builtin_answer(messages)
         return
 
-    for candidate in _ollama_retry_candidates(chosen):
+    for candidate in _ollama_retry_candidates(local_seed):
         try:
             resp = requests.post(
                 f"{_ollama_url()}/api/chat",
@@ -317,21 +371,24 @@ def generate_sync(
     messages: list[dict[str, str]],
     model: str | None = None,
 ) -> str:
-    """Synchronous generation from an Ollama model with fallback.
-    Uses Credon Brain-backed user-facing fallback when Ollama is unavailable."""
+    """Synchronous generation with deterministic fallback: selected → cloud → local → Brain."""
     chosen = model or default_model()
+    mode = _runtime_mode()
 
-    if _is_cloud_model(chosen):
-        cloud_text = _generate_cloud_sync(messages, chosen)
+    for candidate in _cloud_retry_candidates(chosen):
+        cloud_text = _generate_cloud_sync(messages, candidate)
         if cloud_text:
             return cloud_text
+
+    if mode == "cloud":
         return _fallback_builtin_answer(messages)
 
-    if not _is_ollama_available(chosen):
-        print(f"[Credon] Ollama/{chosen} unavailable for sync, using fallback answer")
+    local_seed = chosen if not _is_cloud_model(chosen) else (os.getenv("OLLAMA_MODEL") or "qwen3:8b")
+    if not _is_ollama_available(local_seed):
+        print(f"[Credon] Ollama/{local_seed} unavailable for sync after cloud fallback")
         return _fallback_builtin_answer(messages)
 
-    for candidate in _ollama_retry_candidates(chosen):
+    for candidate in _ollama_retry_candidates(local_seed):
         try:
             resp = requests.post(
                 f"{_ollama_url()}/api/chat",
@@ -345,22 +402,58 @@ def generate_sync(
         except Exception as exc:
             print(f"[Credon] Model sync error ({candidate}): {exc}")
 
+    for candidate in _cloud_retry_candidates(chosen):
+        cloud_text = _generate_cloud_sync(messages, candidate)
+        if cloud_text:
+            return cloud_text
+
     return _fallback_builtin_answer(messages)
 
 
+def _cloud_retry_candidates(chosen: str) -> list[str]:
+    ordered: list[str] = []
+
+    def _add(model_id: str | None) -> None:
+        mid = (model_id or "").strip()
+        if not mid or mid in ordered:
+            return
+        provider = _cloud_provider_for_model(mid)
+        if provider == "deepseek" and _deepseek_api_key():
+            ordered.append(mid)
+        elif provider == "groq" and _groq_api_key():
+            ordered.append(mid)
+
+    _add(chosen)
+    _add(_deepseek_default_model())
+    _add("deepseek-chat")
+    _add(_groq_default_model())
+    _add("groq:deepseek-r1-distill-llama-70b")
+    return ordered
+
+
+def cloud_retry_candidates(chosen: str) -> list[str]:
+    """Public wrapper for cloud retry order."""
+    return _cloud_retry_candidates(chosen)
+
+
 def _generate_cloud_sync(messages: list[dict[str, str]], model: str) -> str:
-    api_key = _deepseek_api_key()
+    provider = _cloud_provider_for_model(model)
+    if not provider:
+        return ""
+    api_key = _deepseek_api_key() if provider == "deepseek" else _groq_api_key()
+    base_url = _deepseek_url() if provider == "deepseek" else _groq_url()
     if not api_key:
         return ""
+
     try:
         resp = requests.post(
-            f"{_deepseek_url().rstrip('/')}/chat/completions",
+            f"{base_url.rstrip('/')}/chat/completions",
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
             json={
-                "model": model,
+                "model": _cloud_api_model(model),
                 "messages": messages,
                 "stream": False,
             },
@@ -375,32 +468,41 @@ def _generate_cloud_sync(messages: list[dict[str, str]], model: str) -> str:
             .strip()
         )
     except Exception as exc:
-        print(f"[Credon] Cloud model error ({model}): {exc}")
+        print(f"[Credon] Cloud model error ({provider}:{model}): {exc}")
         return ""
+
+
+def generate_cloud_sync(messages: list[dict[str, str]], model: str) -> str:
+    """Public wrapper for cloud sync generation."""
+    return _generate_cloud_sync(messages, model)
 
 
 def _generate_cloud_stream(
     messages: list[dict[str, str]], model: str
 ) -> Generator[str, None, None]:
-    """Stream tokens from DeepSeek cloud API."""
-    api_key = _deepseek_api_key()
+    """Stream tokens from cloud API (DeepSeek/Groq)."""
+    provider = _cloud_provider_for_model(model)
+    if not provider:
+        return
+    api_key = _deepseek_api_key() if provider == "deepseek" else _groq_api_key()
+    base_url = _deepseek_url() if provider == "deepseek" else _groq_url()
     if not api_key:
         return
     try:
         import json as _json
         resp = requests.post(
-            f"{_deepseek_url().rstrip('/')}/chat/completions",
+            f"{base_url.rstrip('/')}/chat/completions",
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
             json={
-                "model": model,
+                "model": _cloud_api_model(model),
                 "messages": messages,
                 "stream": True,
             },
             stream=True,
-            timeout=45,
+            timeout=30,
         )
         resp.raise_for_status()
         for line in resp.iter_lines():
@@ -421,7 +523,7 @@ def _generate_cloud_stream(
             except _json.JSONDecodeError:
                 continue
     except Exception as exc:
-        print(f"[Credon] Cloud stream error ({model}): {exc}")
+        print(f"[Credon] Cloud stream error ({provider}:{model}): {exc}")
 
 
 def _fallback_embedding(text: str, dim: int = 256) -> list[float]:

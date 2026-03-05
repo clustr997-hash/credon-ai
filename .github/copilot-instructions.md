@@ -61,3 +61,46 @@
 - Prefer minimal, route-local changes in `chat.py`; this file encodes product behavior (confidence, fallback, routing).
 - Keep response payload compatibility for frontend consumers (`sources`, `images`, `latency_ms`, SSE event keys).
 - If you add new route behavior, mirror it in both sync and streaming endpoints unless intentionally different.
+
+---
+
+# Credon AI Development Guidelines for Copilot
+
+## Core Principles
+1. **Never return generic fallback answers** - Always try Credon Brain first
+2. **Quality over speed** - Better to return "I need more context" than wrong info
+3. **Source synthesis** - When sources available, extract clear main points
+4. **No garbage learning** - Filter out context-leaked, generic, or wrong responses
+
+## Code Standards
+- Use type hints everywhere (`str`, `list[dict[str, Any]]`, etc.)
+- Handle None/empty cases explicitly
+- Log decisions: `print(f"[Credon] Using Brain fallback because...")`
+- Test with both English and Hinglish
+
+## Answer Quality Checks
+Before saving to learned DB:
+- [ ] Answer length > 50 chars
+- [ ] Confidence >= medium
+- [ ] Question not a meta-prompt
+- [ ] Answer doesn't contain error markers
+- [ ] Relevance: 2+ shared keywords between Q and A
+
+## Response Structure
+Always include:
+1. Clear main answer
+2. Supporting points (if complex)
+3. Sources (if web search used)
+4. 3 follow-up suggestions
+
+Never say:
+- "I'm building understanding"
+- "Try enabling web search" (just do it)
+- "I'm continuously learning"
+- Generic "here's what I found"
+
+## When Suggesting Code
+- Prefer explicit over clever
+- Add comments explaining WHY, not just WHAT
+- Include error handling
+- Show before/after examples
