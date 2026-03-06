@@ -22,6 +22,7 @@ from app.services.chat_store import get_transcript, list_sessions, save_message
 from app.services.memory_answer import (
     memory_based_answer,
     personal_query_fallback,
+    profile_update_acknowledgement,
     is_personal_query,
 )
 from app.services.generation_v2 import (
@@ -1068,6 +1069,20 @@ def chat(payload: ChatRequest) -> ChatResponse:
             metadata={"routing": {"selected_route": "followup_generation", "reason": "contextual_followup", "score": 1.0}},
         )
 
+    profile_update = profile_update_acknowledgement(cleaned_query, transcript, target_language)
+    if profile_update:
+        save_message(payload.user_id, payload.session_id, "assistant", profile_update)
+        elapsed = int((perf_counter() - start) * 1000)
+        return ChatResponse(
+            answer=profile_update,
+            language=target_language,
+            confidence="high",
+            sources=[],
+            images=[],
+            latency_ms=elapsed,
+            metadata={"routing": {"selected_route": "profile_update_ack", "reason": "first_person_profile_update", "score": 1.0}},
+        )
+
     memory_answer = memory_based_answer(cleaned_query, transcript, target_language)
     if memory_answer:
         save_message(payload.user_id, payload.session_id, "assistant", memory_answer)
@@ -1444,6 +1459,17 @@ def chat_stream(payload: ChatRequest):
             yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed, 'metadata': {'routing': {'selected_route': 'followup_generation_stream', 'reason': 'contextual_followup', 'score': 1.0}}})}\n\n"
 
         return StreamingResponse(_followup_events(), media_type="text/event-stream")
+
+    profile_update = profile_update_acknowledgement(cleaned_query, transcript, target_language)
+    if profile_update:
+        save_message(payload.user_id, payload.session_id, "assistant", profile_update)
+        elapsed = int((perf_counter() - start) * 1000)
+
+        def _profile_update_events():
+            yield f"data: {_json.dumps({'type': 'token', 'content': profile_update})}\n\n"
+            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed, 'metadata': {'routing': {'selected_route': 'profile_update_ack_stream', 'reason': 'first_person_profile_update', 'score': 1.0}}})}\n\n"
+
+        return StreamingResponse(_profile_update_events(), media_type="text/event-stream")
 
     # Fast path: memory-based answer
     memory_answer = memory_based_answer(cleaned_query, transcript, target_language)

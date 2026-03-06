@@ -23,6 +23,30 @@ def is_personal_query(query: str) -> bool:
     return any(re.search(pattern, q) for pattern in patterns)
 
 
+def _is_name_recall_query(query: str) -> bool:
+    q = query.lower().strip()
+    patterns = [
+        r"\bwho am i\b",
+        r"\bwhat is my name\b",
+        r"\bdo you remember my name\b",
+        r"\bmera naam kya\b",
+        r"\bnaam kya\b",
+        r"\bwhat did i tell you about myself\b",
+    ]
+    return any(re.search(pattern, q) for pattern in patterns)
+
+
+def _is_profile_intro_statement(query: str) -> bool:
+    q = query.lower().strip()
+    patterns = [
+        r"\bmy name is\s+[a-zA-Z]",
+        r"\bi am\s+[a-zA-Z]",
+        r"\bi'm\s+[a-zA-Z]",
+        r"\bmera naam\s+[a-zA-Z]",
+    ]
+    return any(re.search(pattern, q) for pattern in patterns)
+
+
 def _extract_name_from_text(text: str) -> str | None:
     patterns = [
         r"\bmy name is\s*([a-zA-Z][a-zA-Z\s'-]{0,40})",
@@ -89,10 +113,7 @@ def memory_based_answer(query: str, transcript: list[dict[str, str]], target_lan
     query_lower = query.lower()
     profile = _build_profile(transcript)
 
-    asks_name = any(
-        phrase in query_lower
-        for phrase in ["what is my name", "who am i", "mera naam", "my name", "naam kya"]
-    )
+    asks_name = _is_name_recall_query(query)
 
     asks_other_personal = any(
         phrase in query_lower
@@ -118,6 +139,43 @@ def memory_based_answer(query: str, transcript: list[dict[str, str]], target_lan
     return f"You told me earlier that your name is {latest_name}."
 
 
+def profile_update_acknowledgement(query: str, transcript: list[dict[str, str]], target_language: str) -> str | None:
+    if not _is_profile_intro_statement(query):
+        return None
+
+    updates = _extract_profile_updates(query)
+    name = updates.get("name")
+    location = updates.get("location")
+    college = updates.get("college")
+    if not any([name, location, college]):
+        return None
+
+    selector = (sum(ord(ch) for ch in query.lower()) + len(transcript)) % 3
+
+    if target_language == "hinglish":
+        if name:
+            variants = [
+                f"Hello {name}! Aapse milke accha laga. Aaj kis topic par help chahiye?",
+                f"Hey {name}, got it. Aaj aap kya explore karna chahte ho?",
+                f"Hi {name}! Main ready hoon. Aaj kaise help karun?",
+            ]
+            return variants[selector]
+        if location:
+            return f"Got it, aap {location} se ho. Ab batao kis cheez me help chahiye?"
+        return f"Noted, aap {college} me padhte ho. Aaj kya kaam karna hai?"
+
+    if name:
+        variants = [
+            f"Hello {name}. Nice to meet you. How can I help today?",
+            f"Hey {name}, got it. What would you like to work on today?",
+            f"Hi {name}. Good to meet you. How is your day going?",
+        ]
+        return variants[selector]
+    if location:
+        return f"Got it, you're from {location}. What would you like help with today?"
+    return f"Noted, you study at {college}. What do you want to work on today?"
+
+
 def personal_query_fallback(query: str, transcript: list[dict[str, str]], target_language: str) -> str | None:
     if not is_personal_query(query):
         return None
@@ -125,7 +183,7 @@ def personal_query_fallback(query: str, transcript: list[dict[str, str]], target
     profile = _build_profile(transcript)
     q = query.lower()
 
-    asks_name = any(x in q for x in ["who am i", "what is my name", "my name"])
+    asks_name = _is_name_recall_query(query)
     asks_location = any(x in q for x in ["where do i live", "where am i from", "my city", "hometown"])
     asks_college = any(x in q for x in ["my college", "which college", "college"])
 

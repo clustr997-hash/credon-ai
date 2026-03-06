@@ -96,7 +96,23 @@ type AuthTab = "signin" | "signup" | "forgot";
 
 /* ─────────────────────────── Constants ─────────────────────────── */
 
-const API = process.env.NEXT_PUBLIC_API_BASE?.trim() || "http://localhost:8000";
+function resolveApiBase(): string {
+  const configured = process.env.NEXT_PUBLIC_API_BASE?.trim();
+  const productionApi = "https://credon-ai-backend.onrender.com";
+
+  if (typeof window !== "undefined") {
+    const hostname = window.location.hostname;
+    const runningLocally = hostname === "localhost" || hostname === "127.0.0.1";
+
+    if (!runningLocally && (!configured || /localhost|127\.0\.0\.1/i.test(configured))) {
+      return productionApi;
+    }
+  }
+
+  return configured || "http://localhost:8000";
+}
+
+const API = resolveApiBase();
 const GREET =
   "Hi! I\u2019m **Credon AI** \u2014 your intelligent assistant. Ask me anything \u2014 I can search the web, solve math, analyze images, and think through complex topics. Try me!";
 
@@ -2868,15 +2884,28 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                               </svg>
                             </button>
                             {shareMenuTarget === i && (
-                              <div className="absolute right-0 bottom-full mb-2 w-44 rounded-xl border border-zinc-700/60 bg-zinc-950/95 p-2 shadow-2xl backdrop-blur-xl z-20">
-                                <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                              <div className="fixed inset-x-3 bottom-24 z-40 rounded-2xl border border-zinc-700/60 bg-zinc-950/95 p-3 shadow-2xl backdrop-blur-xl sm:absolute sm:right-0 sm:bottom-full sm:inset-x-auto sm:mb-2 sm:w-44 sm:rounded-xl sm:p-2">
+                                <div className="mb-2 flex items-center justify-between sm:hidden">
+                                  <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-400">Share answer</p>
+                                  <button
+                                    type="button"
+                                    onClick={() => setShareMenuTarget(null)}
+                                    className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-100"
+                                    title="Close share options"
+                                  >
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  </button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 text-[12px] sm:gap-1.5 sm:text-[11px]">
                                   {browserSupportsNativeShare && (
-                                    <button type="button" onClick={() => { void shareAssistantToChannel("native", i, m); }} className="rounded-lg border border-zinc-700/50 px-2 py-2 text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200">Share</button>
+                                    <button type="button" onClick={() => { void shareAssistantToChannel("native", i, m); }} className="rounded-xl border border-zinc-700/50 px-3 py-2.5 text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200 sm:rounded-lg sm:px-2 sm:py-2">Share</button>
                                   )}
-                                  <button type="button" onClick={() => { void shareAssistantToChannel("copy", i, m); }} className="rounded-lg border border-zinc-700/50 px-2 py-2 text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200">Copy</button>
-                                  <button type="button" onClick={() => { void shareAssistantToChannel("whatsapp", i, m); }} className="rounded-lg border border-zinc-700/50 px-2 py-2 text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200">WhatsApp</button>
-                                  <button type="button" onClick={() => { void shareAssistantToChannel("email", i, m); }} className="rounded-lg border border-zinc-700/50 px-2 py-2 text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200">Email</button>
-                                  <button type="button" onClick={() => { void shareAssistantToChannel("sms", i, m); }} className="col-span-2 rounded-lg border border-zinc-700/50 px-2 py-2 text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200">SMS</button>
+                                  <button type="button" onClick={() => { void shareAssistantToChannel("copy", i, m); }} className="rounded-xl border border-zinc-700/50 px-3 py-2.5 text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200 sm:rounded-lg sm:px-2 sm:py-2">Copy</button>
+                                  <button type="button" onClick={() => { void shareAssistantToChannel("whatsapp", i, m); }} className="rounded-xl border border-zinc-700/50 px-3 py-2.5 text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200 sm:rounded-lg sm:px-2 sm:py-2">WhatsApp</button>
+                                  <button type="button" onClick={() => { void shareAssistantToChannel("email", i, m); }} className="rounded-xl border border-zinc-700/50 px-3 py-2.5 text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200 sm:rounded-lg sm:px-2 sm:py-2">Email</button>
+                                  <button type="button" onClick={() => { void shareAssistantToChannel("sms", i, m); }} className="col-span-2 rounded-xl border border-zinc-700/50 px-3 py-2.5 text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200 sm:rounded-lg sm:px-2 sm:py-2">SMS</button>
                                 </div>
                               </div>
                             )}
@@ -3260,16 +3289,32 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(() => {
+    if (!("serviceWorker" in navigator)) return;
+
+    let didRefreshForNewWorker = false;
+    const onControllerChange = () => {
+      if (didRefreshForNewWorker) return;
+      didRefreshForNewWorker = true;
+      window.location.reload();
+    };
+
+    navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
+    navigator.serviceWorker
+      .register("/sw.js", { updateViaCache: "none" })
+      .then((registration) => registration.update())
+      .catch(() => {
         // Non-fatal in local/dev environments.
       });
-    }
+
+    return () => {
+      navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
+    };
   }, []);
 
   useEffect(() => {
     const dismissedUntil = Number(localStorage.getItem("credon-install-dismiss-until") || "0");
-    const alreadyInstalled = window.matchMedia("(display-mode: standalone)").matches;
+    const iosStandalone = typeof navigator !== "undefined" && Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+    const alreadyInstalled = window.matchMedia("(display-mode: standalone)").matches || iosStandalone;
     if (alreadyInstalled || Date.now() < dismissedUntil) return;
 
     const handler = (event: Event) => {
