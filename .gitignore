@@ -1,6 +1,7 @@
 .env
 .env.local
 .env.*
+!.env*.example
 backend/secrets/
 *.log
 build.log
@@ -8,6 +9,7 @@ DataAnalysisExpert/
 backend/data/chat_store.json
 backend/data/*.json
 frontend/.env*
+!frontend/.env*.example
 
 # Python
 backend/.venv/

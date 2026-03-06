@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: credon-ai-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: MODEL_RUNTIME_MODE
+        value: cloud
+      - key: USE_LOCAL_MODEL
+        value: false
+      - key: USE_MODEL_GENERATION
+        value: true
+      - key: USE_WEB_SEARCH
+        value: true
+      - key: ENABLE_PAGE_EXTRACTION
+        value: false
+      - key: CORS_ALLOW_ORIGINS
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
