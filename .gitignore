@@ -1,10 +1,13 @@
 .env
 .env.local
+.env.*
 backend/secrets/
 *.log
 build.log
 DataAnalysisExpert/
 backend/data/chat_store.json
+backend/data/*.json
+frontend/.env*
 
 # Python
 backend/.venv/

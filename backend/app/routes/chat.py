@@ -4,6 +4,8 @@ from typing import Any, Iterator, Literal, cast
 import re
 import json as _json
 import logging
+from collections import OrderedDict
+from threading import Lock
 from app.models.schemas import (
     ChatMessage,
     ChatRequest,
@@ -46,10 +48,66 @@ from app.services.answer_validator import (
 from app.services.push_store import save_user_push_token
 from app.services.push_notify import send_test_push
 from app.utils.language import detect_language
-from time import perf_counter
+from time import perf_counter, time
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+_FAST_CACHE_TTL_SEC = 180.0
+_FAST_CACHE_MAX = 200
+_FAST_RESPONSE_CACHE: "OrderedDict[str, tuple[float, dict[str, Any]]]" = OrderedDict()
+_FAST_CACHE_LOCK = Lock()
+
+
+def _normalize_query_key(query: str) -> str:
+    return re.sub(r"\s+", " ", query.strip().lower())[:500]
+
+
+def _response_cache_key(
+    *,
+    user_id: str,
+    query: str,
+    language: Literal["en", "hinglish"],
+    use_web: bool,
+    deep_think: bool,
+    code_mode: bool,
+    detail_pref: str,
+    news_top_n: int,
+) -> str:
+    return "|".join(
+        [
+            user_id,
+            language,
+            _normalize_query_key(query),
+            "web1" if use_web else "web0",
+            "deep1" if deep_think else "deep0",
+            "code1" if code_mode else "code0",
+            f"detail:{detail_pref}",
+            f"news:{news_top_n}",
+        ]
+    )
+
+
+def _response_cache_get(key: str) -> dict[str, Any] | None:
+    now = time()
+    with _FAST_CACHE_LOCK:
+        value = _FAST_RESPONSE_CACHE.get(key)
+        if not value:
+            return None
+        ts, payload = value
+        if (now - ts) > _FAST_CACHE_TTL_SEC:
+            _FAST_RESPONSE_CACHE.pop(key, None)
+            return None
+        _FAST_RESPONSE_CACHE.move_to_end(key)
+        return dict(payload)
+
+
+def _response_cache_set(key: str, payload: dict[str, Any]) -> None:
+    with _FAST_CACHE_LOCK:
+        _FAST_RESPONSE_CACHE[key] = (time(), dict(payload))
+        _FAST_RESPONSE_CACHE.move_to_end(key)
+        while len(_FAST_RESPONSE_CACHE) > _FAST_CACHE_MAX:
+            _FAST_RESPONSE_CACHE.popitem(last=False)
 
 
 def _public_model() -> dict[str, str | bool]:
@@ -340,23 +398,31 @@ def _code_enhanced_query(query: str, code_mode_requested: bool) -> tuple[str, bo
     return f"{query}\n\n[{code_instruction}]", True
 
 
-def _web_result_budget(query: str, *, deep_think: bool = True) -> int:
+def _web_result_budget(query: str, *, deep_think: bool = True, master_mode: bool = False) -> int:
     q = query.lower().strip()
-    explicit = re.search(r"\btop\s+(\d{1,2})\b", q)
-    if explicit:
-        requested = int(explicit.group(1))
-        return max(6, min(50, requested))
+    explicit_top_n = _extract_top_n_request(q)
+    if explicit_top_n is not None:
+        return max(6, min(30 if master_mode else 40, explicit_top_n))
+
+    if _is_news_query(q):
+        return 8 if deep_think else 6
+
+    if _is_simple_query(q):
+        return 4 if deep_think else 3
 
     words = len(q.split())
     if words >= 30:
-        base = 25
+        base = 12
     elif words >= 18:
-        base = 15
-    else:
         base = 10
+    else:
+        base = 8
+
+    if master_mode:
+        base = min(base, 8)
 
     if not deep_think:
-        return max(4, min(base, 8))
+        return max(4, min(base, 7))
     return base
 
 
@@ -604,6 +670,8 @@ def _is_ambiguous_short_followup(query: str) -> bool:
     q = query.lower().strip()
     if len(q.split()) > 3:
         return False
+    if q.startswith("for "):
+        return True
     return q in {"explain", "simplify", "why", "how", "details", "more", "elaborate"}
 
 
@@ -628,6 +696,94 @@ def _is_reference_followup(query: str) -> bool:
         "from this pdf",
         "from this image",
     }
+
+
+def _is_news_query(query: str) -> bool:
+    q = query.lower()
+    return bool(re.search(r"\b(news|headlines|breaking|current events|latest updates)\b", q))
+
+
+def _extract_top_n_request(query: str) -> int | None:
+    q = query.lower()
+    match = re.search(r"\btop\s+(\d{1,2})\b", q)
+    if match:
+        return max(3, min(30, int(match.group(1))))
+    match = re.search(r"\b(\d{1,2})\s+(news|headlines|updates)\b", q)
+    if match:
+        return max(3, min(30, int(match.group(1))))
+    return None
+
+
+def _safe_int(value: object, default: int = 0) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except Exception:
+            return default
+    return default
+
+
+def _detail_preference(query: str, transcript: list[dict[str, Any]]) -> Literal["short", "detailed", "default"]:
+    q = query.lower()
+    short_markers = [
+        "short", "brief", "in short", "tldr", "tl;dr", "one line", "2 lines", "summary",
+    ]
+    detailed_markers = [
+        "in detail", "detailed", "deep", "step by step", "elaborate", "full explain", "long answer",
+    ]
+    if any(marker in q for marker in short_markers):
+        return "short"
+    if any(marker in q for marker in detailed_markers):
+        return "detailed"
+
+    for item in reversed(transcript[-10:]):
+        if str(item.get("role", "")).lower() != "user":
+            continue
+        text = str(item.get("text", "")).lower()
+        if any(marker in text for marker in short_markers):
+            return "short"
+        if any(marker in text for marker in detailed_markers):
+            return "detailed"
+    return "default"
+
+
+def _shape_query_for_user_intent(
+    query_for_model: str,
+    original_query: str,
+    transcript: list[dict[str, Any]],
+) -> tuple[str, dict[str, object]]:
+    detail_pref = _detail_preference(original_query, transcript)
+    explicit_top_n = _extract_top_n_request(original_query)
+    news_top_n = explicit_top_n if explicit_top_n is not None else (10 if _is_news_query(original_query) else 0)
+
+    hints: list[str] = []
+    if detail_pref == "short":
+        hints.append("Keep the response concise: 3-5 bullets or one short paragraph.")
+    elif detail_pref == "detailed":
+        hints.append("Give a detailed, structured response with key highlights and practical points.")
+
+    if news_top_n > 0:
+        hints.append(
+            f"For this news query, provide Top {news_top_n} updates for today with numbered points, why each matters, and a short source note."
+        )
+
+    if _is_math_query(original_query):
+        hints.append("For math/problem solving, show step-by-step solution and final answer clearly.")
+
+    if not hints:
+        return query_for_model, {"detail_preference": detail_pref}
+
+    shaped = query_for_model + "\n\n[Response style instructions: " + " ".join(hints) + "]"
+    meta: dict[str, object] = {"detail_preference": detail_pref}
+    if news_top_n > 0:
+        meta["news_top_n"] = news_top_n
+    return shaped, meta
 
 
 def _is_pdf_reference_query(query: str) -> bool:
@@ -658,7 +814,11 @@ def _latest_non_user_context(transcript: list[dict[str, Any]], current_query: st
 
 def _contextual_query(query: str, transcript: list[dict[str, Any]]) -> str:
     """Augment ambiguous follow-ups with nearby transcript context for retrieval/generation."""
-    if not _is_reference_followup(query):
+    if not (
+        _is_reference_followup(query)
+        or _is_ambiguous_short_followup(query)
+        or _is_contextual_followup(query)
+    ):
         return query
     context = _latest_non_user_context(transcript, query)
     if not context:
@@ -804,6 +964,17 @@ def chat(payload: ChatRequest) -> ChatResponse:
     transcript = get_transcript(payload.user_id, payload.session_id)
     working_query = _contextual_query(cleaned_query, transcript)
     working_query, code_mode_active = _code_enhanced_query(working_query, payload.code_mode)
+    working_query, intent_meta = _shape_query_for_user_intent(working_query, cleaned_query, transcript)
+    cache_key = _response_cache_key(
+        user_id=payload.user_id,
+        query=cleaned_query,
+        language=target_language,
+        use_web=payload.use_web,
+        deep_think=payload.deep_think,
+        code_mode=code_mode_active,
+        detail_pref=str(intent_meta.get("detail_preference", "default")),
+        news_top_n=_safe_int(intent_meta.get("news_top_n", 0), 0),
+    )
 
     followup_mode = (
         _is_contextual_followup(cleaned_query)
@@ -812,6 +983,41 @@ def chat(payload: ChatRequest) -> ChatResponse:
     )
     if followup_mode and not reply_context:
         reply_context = _latest_assistant_context(transcript)
+
+    if not followup_mode and not reply_context and not has_attachment_marker:
+        cached = _response_cache_get(cache_key)
+        if cached:
+            cached_answer = str(cached.get("answer", "")).strip()
+            if cached_answer:
+                save_message(
+                    payload.user_id,
+                    payload.session_id,
+                    "assistant",
+                    cached_answer,
+                    thinking=str(cached.get("thinking", "")),
+                    confidence=str(cached.get("confidence", "medium")),
+                    sources=cast(list[dict[str, str]], cached.get("sources", [])),
+                    metadata={
+                        "routing": {
+                            "selected_route": "response_cache",
+                            "reason": "recent_similar_query",
+                            "score": 1.0,
+                        },
+                        "intent": intent_meta,
+                    },
+                )
+                elapsed = int((perf_counter() - start) * 1000)
+                return ChatResponse(
+                    answer=cached_answer,
+                    language=target_language,
+                    confidence=cast(Literal["high", "medium", "low"], cached.get("confidence", "medium")),
+                    sources=[Source(title=s.get("title", ""), url=s.get("url", "")) for s in cast(list[dict[str, str]], cached.get("sources", []))],
+                    images=[ImageResult(**img) for img in cast(list[dict[str, str]], cached.get("images", []))] if cached.get("images") else [],
+                    suggestions=cast(list[str], cached.get("suggestions", [])),
+                    thinking=str(cached.get("thinking", "")),
+                    latency_ms=elapsed,
+                    metadata={"routing": {"selected_route": "response_cache", "reason": "recent_similar_query", "score": 1.0}},
+                )
 
     # Numbered follow-up detection: "1", "2", "yes" → resolve to suggestion
     is_numbered, follow_number = _is_numbered_followup(cleaned_query)
@@ -1076,6 +1282,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
             "reason": quick_reason,
         },
         "mode": {"code_mode": code_mode_active, "master_mode": master_mode_active},
+        "intent": intent_meta,
         "answer_arbitration": {"chosen": arbitration_source},
         "evaluator": eval_diag,
     }
@@ -1094,6 +1301,18 @@ def chat(payload: ChatRequest) -> ChatResponse:
         images = [ImageResult(**img) for img in raw_images]
 
     elapsed = int((perf_counter() - start) * 1000)
+
+    _response_cache_set(
+        cache_key,
+        {
+            "answer": answer,
+            "confidence": confidence,
+            "sources": sources_payload,
+            "images": [img.model_dump() for img in images],
+            "suggestions": suggestions,
+            "thinking": thinking,
+        },
+    )
 
     return ChatResponse(
         answer=answer,
@@ -1124,6 +1343,17 @@ def chat_stream(payload: ChatRequest):
     transcript = get_transcript(payload.user_id, payload.session_id)
     working_query = _contextual_query(cleaned_query, transcript)
     working_query, code_mode_active = _code_enhanced_query(working_query, payload.code_mode)
+    working_query, intent_meta = _shape_query_for_user_intent(working_query, cleaned_query, transcript)
+    cache_key = _response_cache_key(
+        user_id=payload.user_id,
+        query=cleaned_query,
+        language=target_language,
+        use_web=payload.use_web,
+        deep_think=payload.deep_think,
+        code_mode=code_mode_active,
+        detail_pref=str(intent_meta.get("detail_preference", "default")),
+        news_top_n=_safe_int(intent_meta.get("news_top_n", 0), 0),
+    )
 
     followup_mode = (
         _is_contextual_followup(cleaned_query)
@@ -1132,6 +1362,44 @@ def chat_stream(payload: ChatRequest):
     )
     if followup_mode and not reply_context:
         reply_context = _latest_assistant_context(transcript)
+
+    if not followup_mode and not reply_context and not has_attachment_marker:
+        cached = _response_cache_get(cache_key)
+        if cached and str(cached.get("answer", "")).strip():
+            cached_answer = str(cached.get("answer", "")).strip()
+            cached_conf = cast(Literal["high", "medium", "low"], str(cached.get("confidence", "medium")))
+            cached_sources = cast(list[dict[str, str]], cached.get("sources", []))
+            cached_images = cast(list[dict[str, str]], cached.get("images", []))
+            cached_suggestions = cast(list[str], cached.get("suggestions", []))
+            cached_thinking = str(cached.get("thinking", ""))
+            save_message(
+                payload.user_id,
+                payload.session_id,
+                "assistant",
+                cached_answer,
+                thinking=cached_thinking,
+                confidence=cached_conf,
+                sources=cached_sources,
+                metadata={
+                    "routing": {
+                        "selected_route": "response_cache_stream",
+                        "reason": "recent_similar_query",
+                        "score": 1.0,
+                    },
+                    "intent": intent_meta,
+                },
+            )
+            elapsed = int((perf_counter() - start) * 1000)
+
+            def _cached_events():
+                if cached_thinking:
+                    yield f"data: {_json.dumps({'type': 'thinking', 'content': cached_thinking})}\n\n"
+                if cached_sources or cached_images:
+                    yield f"data: {_json.dumps({'type': 'sources', 'sources': cached_sources, 'confidence': cached_conf, 'images': cached_images})}\n\n"
+                yield f"data: {_json.dumps({'type': 'token', 'content': cached_answer})}\n\n"
+                yield f"data: {_json.dumps({'type': 'done', 'confidence': cached_conf, 'sources': cached_sources, 'images': cached_images, 'suggestions': cached_suggestions, 'latency_ms': elapsed, 'metadata': {'routing': {'selected_route': 'response_cache_stream', 'reason': 'recent_similar_query', 'score': 1.0}}})}\n\n"
+
+            return StreamingResponse(_cached_events(), media_type="text/event-stream")
 
     # Numbered follow-up detection: "1", "2", "yes" → resolve to suggestion
     is_numbered, follow_number = _is_numbered_followup(cleaned_query)
@@ -1432,12 +1700,24 @@ def chat_stream(payload: ChatRequest):
             metadata={
                 "routing": {"selected_route": "model_generation_stream", "score": round(quick_score, 4), "reason": quick_reason},
                 "mode": {"code_mode": code_mode_active, "master_mode": master_mode_active},
+                "intent": intent_meta,
                 "evaluator": eval_diag,
             },
         )
         learn_from_conversation(cleaned_query, answer_text, adj_confidence)
+        _response_cache_set(
+            cache_key,
+            {
+                "answer": answer_text,
+                "confidence": adj_confidence,
+                "sources": sources_payload,
+                "images": images_payload,
+                "suggestions": suggestions,
+                "thinking": thinking,
+            },
+        )
         elapsed = int((perf_counter() - start) * 1000)
-        yield f"data: {_json.dumps({'type': 'done', 'latency_ms': elapsed, 'confidence': adj_confidence, 'suggestions': suggestions, 'metadata': {'routing': {'selected_route': 'model_generation_stream', 'score': round(quick_score, 4), 'reason': quick_reason}, 'mode': {'code_mode': code_mode_active, 'master_mode': master_mode_active}, 'evaluator': eval_diag}})}\n\n"
+        yield f"data: {_json.dumps({'type': 'done', 'latency_ms': elapsed, 'confidence': adj_confidence, 'suggestions': suggestions, 'metadata': {'routing': {'selected_route': 'model_generation_stream', 'score': round(quick_score, 4), 'reason': quick_reason}, 'mode': {'code_mode': code_mode_active, 'master_mode': master_mode_active}, 'intent': intent_meta, 'evaluator': eval_diag}})}\n\n"
 
     return StreamingResponse(_stream_events(), media_type="text/event-stream")
 

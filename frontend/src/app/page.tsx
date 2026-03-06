@@ -2,6 +2,8 @@
 
 import {
   FormEvent,
+  isValidElement,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -258,6 +260,14 @@ function stripSuggestionSection(text: string): string {
     result = result.replace(p, "");
   }
   return result.trimEnd();
+}
+
+function extractCodeFromPre(children: ReactNode): string {
+  if (!isValidElement(children)) return "";
+  const childProps = children.props as { children?: ReactNode };
+  const codeChild = childProps.children;
+  if (Array.isArray(codeChild)) return codeChild.join("").trim();
+  return String(codeChild ?? "").trim();
 }
 
 /* ─────────────────────────── Credon Logo Component ─────────────────────────── */
@@ -544,7 +554,7 @@ function ImageGrid({ images }: { images: ImageResult[] }) {
 
 /* ─────────────────────────── Settings Modal ─────────────────────────── */
 
-function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setDeepThink, codeMode, setCodeMode, isGuest, onRequireLogin, onDownloadCurrentChat, onDownloadAllChats, onPreviewCurrentChat, onPreviewAllChats, fcmStatus, onEnableNotifications }: {
+function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setDeepThink, codeMode, setCodeMode, isGuest, onRequireLogin, onDownloadCurrentChat, onDownloadAllChats, onPreviewCurrentChat, onPreviewAllChats, onPreviewSessionPdf, onDownloadSessionPdf, recentSessions, fcmStatus, onEnableNotifications }: {
   open: boolean;
   onClose: () => void;
   webSearch: boolean;
@@ -559,6 +569,9 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
   onDownloadAllChats: () => void;
   onPreviewCurrentChat: () => void;
   onPreviewAllChats: () => void;
+  onPreviewSessionPdf: (sessionId: string) => void;
+  onDownloadSessionPdf: (sessionId: string) => void;
+  recentSessions: SessionSummary[];
   fcmStatus: string;
   onEnableNotifications: () => void;
 }) {
@@ -712,7 +725,7 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
           <div>
             <h3 className="text-sm font-medium text-zinc-300 mb-2">Download Center</h3>
             <div className="rounded-xl border border-zinc-700/50 bg-zinc-900/40 p-3 space-y-3">
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setDownloadTarget("current")}
@@ -774,6 +787,42 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
                 Quick Download: All Chats
               </button>
             </div>
+
+            <div className="mt-3 rounded-xl border border-zinc-700/50 bg-zinc-950/45 p-3">
+              <p className="text-xs text-zinc-400 mb-2">Recent Chat PDFs (view/download specific session)</p>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {recentSessions.slice(0, 8).map((session) => (
+                  <div key={session.session_id} className="rounded-lg border border-zinc-800/80 bg-zinc-900/60 px-2.5 py-2">
+                    <p className="text-[11px] text-zinc-300 truncate">{session.preview || session.session_id}</p>
+                    <div className="mt-1.5 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onPreviewSessionPdf(session.session_id);
+                          onClose();
+                        }}
+                        className="rounded-md border border-zinc-700/60 bg-zinc-800/70 px-2 py-1 text-[11px] text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200 transition"
+                      >
+                        View
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onDownloadSessionPdf(session.session_id);
+                          onClose();
+                        }}
+                        className="rounded-md border border-zinc-700/60 bg-zinc-800/70 px-2 py-1 text-[11px] text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200 transition"
+                      >
+                        Download
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {recentSessions.length === 0 && (
+                  <p className="text-[11px] text-zinc-500">No recent sessions found yet.</p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
         <div className="px-6 py-4 border-t border-zinc-800/50 flex justify-end">
@@ -806,6 +855,41 @@ function PrivacyModal({ open, onClose }: { open: boolean; onClose: () => void })
           <div><h3 className="text-white font-semibold mb-1">Contact</h3><p className="text-zinc-400">privacy@credon.ai</p></div>
         </div>
         <div className="px-6 py-4 border-t border-zinc-800 shrink-0 flex justify-end">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm rounded-xl bg-zinc-800 text-white hover:bg-zinc-700 transition">Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UpdatesModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" onClick={onClose}>
+      <div className="modal-content neo-glass w-full max-w-lg rounded-2xl border border-zinc-700/50 shadow-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/50 shrink-0">
+          <h2 className="text-lg font-semibold text-white">Updates</h2>
+          <button type="button" onClick={onClose} title="Close" className="text-zinc-400 hover:text-white transition p-1 rounded-lg hover:bg-zinc-800">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div className="px-6 py-5 overflow-y-auto space-y-3 text-sm">
+          <div className="rounded-xl border border-cyan-500/25 bg-cyan-500/10 p-3">
+            <p className="text-cyan-200 font-medium">Performance and quality improvements are active</p>
+            <p className="text-xs text-zinc-300 mt-1">Credon now applies stronger follow-up understanding, faster recent-query caching, better detail control, and improved PDF workflows.</p>
+          </div>
+          <div className="rounded-xl border border-zinc-700/50 bg-zinc-900/50 p-3">
+            <p className="text-white font-medium">What is new</p>
+            <ul className="mt-2 space-y-1.5 text-xs text-zinc-300">
+              <li>Smarter follow-up handling for context-bridge prompts like &quot;for mobile&quot; or &quot;in short&quot;.</li>
+              <li>Intent-aware outputs: short/brief vs detailed/deep formats.</li>
+              <li>News prompts auto-shape into top updates format.</li>
+              <li>Session-level PDF view/download from settings.</li>
+              <li>Push status messaging is now cleaner and user-friendly.</li>
+            </ul>
+          </div>
+        </div>
+        <div className="px-6 py-4 border-t border-zinc-800/50 flex justify-end">
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm rounded-xl bg-zinc-800 text-white hover:bg-zinc-700 transition">Close</button>
         </div>
       </div>
@@ -1337,6 +1421,10 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   const [currentSession, setCurrentSession] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [copied, setCopied] = useState<number | null>(null);
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [shared, setShared] = useState<number | null>(null);
+  const [shareMenuTarget, setShareMenuTarget] = useState<number | null>(null);
+  const [mobileModesOpen, setMobileModesOpen] = useState(false);
   const [loginPrompt, setLoginPrompt] = useState<"deep-think" | "knowledge" | "web-search" | "code-mode" | null>(null);
   const [feedbackTarget, setFeedbackTarget] = useState<number | null>(null);
   const [feedbackBusy, setFeedbackBusy] = useState(false);
@@ -1347,6 +1435,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   const [selectedModel, setSelectedModel] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
+  const [updatesOpen, setUpdatesOpen] = useState(false);
   const [knowledgeOpen, setKnowledgeOpen] = useState(false);
   const [useWeb, setUseWeb] = useState(() => !isGuest);
   const [deepThink, setDeepThink] = useState(() => {
@@ -1398,6 +1487,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   const displayName = user?.displayName ?? user?.email?.split("@")[0] ?? "Guest";
   const isEmptyChat = messages.length === 1 && messages[0].text === GREET;
   const allModesActive = !isGuest && useWeb && deepThink && codeMode;
+  const browserSupportsNativeShare = typeof window !== "undefined" && typeof navigator !== "undefined" && "share" in navigator;
 
   useEffect(() => {
     // Force guest mode to start in lightweight settings.
@@ -1569,6 +1659,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   const newChat = () => {
     setCurrentSession(newSessionId());
     stopGeneration();
+    setMobileModesOpen(false);
     setMessages([{ role: "assistant", text: GREET, timestamp: Date.now() }]);
     setSidebarOpen(false);
     inputRef.current?.focus();
@@ -1643,6 +1734,8 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     const q = text.trim();
     if (attachedFiles.length === 0 && !q) return;
     if (loading || uploadingFiles) return;
+
+    setMobileModesOpen(false);
 
     const isRegenerate = options?.regenerate === true;
     let replyContext = options?.replyContext ?? replyTo?.text ?? null;
@@ -2114,6 +2207,71 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     setTimeout(() => setCopied(null), 2000);
   };
 
+  const copyCodeText = (code: string) => {
+    if (!code.trim()) return;
+    navigator.clipboard.writeText(code);
+    setCopiedCode(code);
+    setTimeout(() => setCopiedCode(null), 1800);
+  };
+
+  const shareAssistantMessage = async (index: number, message: Message) => {
+    const payloadText = stripSuggestionSection(message.text).trim();
+    if (!payloadText) return;
+
+    try {
+      if (browserSupportsNativeShare) {
+        await navigator.share({
+          title: "Credon AI Answer",
+          text: payloadText,
+          url: typeof window !== "undefined" ? window.location.href : undefined,
+        });
+        setShared(index);
+        setTimeout(() => setShared(null), 1800);
+        return;
+      }
+      await navigator.clipboard.writeText(payloadText);
+      setShared(index);
+      setTimeout(() => setShared(null), 1800);
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") return;
+      setUploadError("Could not share this answer right now.");
+    }
+  };
+
+  const shareAssistantToChannel = async (channel: "native" | "copy" | "whatsapp" | "email" | "sms", index: number, message: Message) => {
+    const payloadText = stripSuggestionSection(message.text).trim();
+    if (!payloadText) return;
+    const encoded = encodeURIComponent(payloadText);
+
+    if (channel === "native") {
+      await shareAssistantMessage(index, message);
+      setShareMenuTarget(null);
+      return;
+    }
+
+    if (channel === "copy") {
+      await navigator.clipboard.writeText(payloadText);
+      setShared(index);
+      setTimeout(() => setShared(null), 1800);
+      setShareMenuTarget(null);
+      return;
+    }
+
+    const href =
+      channel === "whatsapp"
+        ? `https://wa.me/?text=${encoded}`
+        : channel === "email"
+          ? `mailto:?subject=${encodeURIComponent("Credon AI Answer")}&body=${encoded}`
+          : `sms:?&body=${encoded}`;
+
+    if (typeof window !== "undefined") {
+      window.open(href, "_blank", "noopener,noreferrer");
+    }
+    setShared(index);
+    setTimeout(() => setShared(null), 1800);
+    setShareMenuTarget(null);
+  };
+
   const showVariant = (index: number, direction: "prev" | "next") => {
     setMessages((prev) => {
       const next = [...prev];
@@ -2213,6 +2371,24 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   const downloadAllChatsPdf = async () => exportAllChatsPdf("download");
   const previewCurrentChatPdf = async () => exportCurrentChatPdf("view");
   const previewAllChatsPdf = async () => exportAllChatsPdf("view");
+
+  const exportSessionChatPdf = async (sessionId: string, action: "download" | "view") => {
+    try {
+      const r = await fetch(`${API}/api/v1/generate/export/chat-pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: uid, session_id: sessionId }),
+      });
+      if (!r.ok) throw new Error("download_failed");
+      const blob = await r.blob();
+      openChatPdfBlob(blob, `credon-chat-${sessionId}.pdf`, action);
+    } catch {
+      setUploadError(`Could not ${action === "view" ? "open" : "download"} this session PDF.`);
+    }
+  };
+
+  const previewSessionPdf = (sessionId: string) => { void exportSessionChatPdf(sessionId, "view"); };
+  const downloadSessionPdf = (sessionId: string) => { void exportSessionChatPdf(sessionId, "download"); };
 
   const regenerateAt = async (assistantIndex: number) => {
     const prevUser = [...messages].slice(0, assistantIndex).reverse().find((m) => m.role === "user");
@@ -2318,10 +2494,14 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         onDownloadAllChats={downloadAllChatsPdf}
         onPreviewCurrentChat={previewCurrentChatPdf}
         onPreviewAllChats={previewAllChatsPdf}
+        onPreviewSessionPdf={previewSessionPdf}
+        onDownloadSessionPdf={downloadSessionPdf}
+        recentSessions={sessions}
         fcmStatus={fcmStatus}
         onEnableNotifications={handleEnableNotifications}
       />
       <PrivacyModal open={privacyOpen} onClose={() => setPrivacyOpen(false)} />
+      <UpdatesModal open={updatesOpen} onClose={() => setUpdatesOpen(false)} />
       <KnowledgeUploadModal open={knowledgeOpen} onClose={() => setKnowledgeOpen(false)} uid={uid} />
       <DislikeFeedbackModal
         key={feedbackTarget ?? -1}
@@ -2386,6 +2566,8 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         <div className="border-t border-zinc-800/60">
           <div className="px-3 pt-3 pb-1 flex gap-3">
             <button type="button" onClick={() => setPrivacyOpen(true)} className="text-[11px] text-zinc-500 hover:text-zinc-300 transition">Privacy</button>
+            <span className="text-zinc-700 text-[11px]">&middot;</span>
+            <button type="button" onClick={() => setUpdatesOpen(true)} className="text-[11px] text-zinc-500 hover:text-zinc-300 transition">Updates</button>
             <span className="text-zinc-700 text-[11px]">&middot;</span>
             <button type="button" onClick={() => setSettingsOpen(true)} className="text-[11px] text-zinc-500 hover:text-zinc-300 transition">Settings</button>
           </div>
@@ -2528,7 +2710,28 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                       )}
                       {m.role === "assistant" && m.text !== GREET ? (
                         <div className="prose prose-invert prose-sm max-w-none text-[14px] sm:text-[15px] leading-relaxed [&_pre]:bg-zinc-900/80 [&_pre]:border [&_pre]:border-zinc-700/30 [&_pre]:rounded-xl [&_pre]:p-3 [&_pre]:overflow-x-auto [&_code]:text-cyan-300 [&_code]:text-[13px] [&_a]:text-cyan-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-cyan-500/30 hover:[&_a]:decoration-cyan-500 [&_h1]:text-xl [&_h1]:tracking-tight [&_h2]:text-lg [&_h2]:tracking-tight [&_h3]:text-base [&_h1]:font-bold [&_h2]:font-semibold [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_li]:my-1 [&_blockquote]:border-l-2 [&_blockquote]:border-cyan-500/40 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-zinc-300 [&_table]:border-collapse [&_th]:border [&_th]:border-zinc-700 [&_th]:px-3 [&_th]:py-1.5 [&_th]:bg-zinc-800 [&_td]:border [&_td]:border-zinc-700 [&_td]:px-3 [&_td]:py-1.5 [&_hr]:border-zinc-700/50 [&_strong]:text-zinc-100 [&_strong]:font-semibold [&_strong]:bg-cyan-400/10 [&_strong]:px-1.5 [&_strong]:py-0.5 [&_strong]:rounded-md [&_li]:marker:text-cyan-300 [&_p:first-of-type]:text-zinc-100 [&_p:first-of-type]:font-medium">
-                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm, remarkMath]}
+                            rehypePlugins={[rehypeKatex]}
+                            components={{
+                              pre: ({ children }) => {
+                                const codeText = extractCodeFromPre(children);
+                                return (
+                                  <div className="relative group my-3">
+                                    <button
+                                      type="button"
+                                      onClick={() => copyCodeText(codeText)}
+                                      className="absolute top-2 right-2 z-10 rounded-md border border-zinc-600/70 bg-zinc-900/85 px-2 py-1 text-[10px] text-zinc-200 opacity-90 hover:opacity-100"
+                                      title="Copy code"
+                                    >
+                                      {copiedCode === codeText ? "Copied" : "Copy"}
+                                    </button>
+                                    <pre>{children}</pre>
+                                  </div>
+                                );
+                              },
+                            }}
+                          >
                             {m.text || (m.streaming ? "\u200B" : "")}
                           </ReactMarkdown>
                           {m.streaming && <span className="inline-block w-2 h-4 bg-cyan-400 animate-pulse rounded-sm ml-0.5 align-text-bottom" />}
@@ -2657,6 +2860,27 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                             )}
                           </button>
+                          <div className="relative">
+                            <button type="button" onClick={() => setShareMenuTarget((prev) => prev === i ? null : i)} className={`transition p-1.5 rounded-lg hover:bg-zinc-800/60 ${shared === i ? "text-emerald-400" : "text-zinc-600 hover:text-zinc-200"}`} title="Share options">
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M7 12h10" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M13 6l6 6-6 6" />
+                              </svg>
+                            </button>
+                            {shareMenuTarget === i && (
+                              <div className="absolute right-0 bottom-full mb-2 w-44 rounded-xl border border-zinc-700/60 bg-zinc-950/95 p-2 shadow-2xl backdrop-blur-xl z-20">
+                                <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                                  {browserSupportsNativeShare && (
+                                    <button type="button" onClick={() => { void shareAssistantToChannel("native", i, m); }} className="rounded-lg border border-zinc-700/50 px-2 py-2 text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200">Share</button>
+                                  )}
+                                  <button type="button" onClick={() => { void shareAssistantToChannel("copy", i, m); }} className="rounded-lg border border-zinc-700/50 px-2 py-2 text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200">Copy</button>
+                                  <button type="button" onClick={() => { void shareAssistantToChannel("whatsapp", i, m); }} className="rounded-lg border border-zinc-700/50 px-2 py-2 text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200">WhatsApp</button>
+                                  <button type="button" onClick={() => { void shareAssistantToChannel("email", i, m); }} className="rounded-lg border border-zinc-700/50 px-2 py-2 text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200">Email</button>
+                                  <button type="button" onClick={() => { void shareAssistantToChannel("sms", i, m); }} className="col-span-2 rounded-lg border border-zinc-700/50 px-2 py-2 text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200">SMS</button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                           <button type="button" onClick={() => exportAnswerPdf(i)} className="text-zinc-600 hover:text-zinc-200 transition p-1.5 rounded-lg hover:bg-zinc-800/60" title="Download as PDF">
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V4m0 12l-4-4m4 4l4-4M4 20h16" />
@@ -2827,86 +3051,69 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
             )}
 
             {allModesActive && (
-              <div className="mb-2 rounded-xl border border-cyan-400/35 bg-linear-to-r from-cyan-500/12 via-blue-500/8 to-cyan-500/12 px-3 py-1.5 text-[11px] text-cyan-100 trinity-glow">
-                Master Mode active: Web Search + DeepThink + Code Mode
+              <div className="mb-1.5 rounded-xl border border-cyan-400/35 bg-linear-to-r from-cyan-500/12 via-blue-500/8 to-cyan-500/12 px-2.5 py-1 text-[10px] sm:text-[11px] text-cyan-100 trinity-glow">
+                <span className="sm:hidden">Master Mode active</span>
+                <span className="hidden sm:inline">Master Mode active: Web Search + DeepThink + Code Mode</span>
               </div>
             )}
-            <div className="sm:hidden mb-2 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (isGuest) {
-                    setLoginPrompt("web-search");
-                    return;
-                  }
-                  setUseWeb((prev) => !prev);
-                }}
-                className={`h-10 rounded-lg border text-[11px] font-medium transition ${useWeb ? "border-cyan-500/50 bg-cyan-500/12 text-cyan-200" : "border-zinc-700/50 bg-zinc-900/70 text-zinc-400"}`}
-                title={isGuest ? "Sign in to use Web Search" : "Toggle Web Search"}
-              >
-                Web Search
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (isGuest) {
-                    setLoginPrompt("deep-think");
-                    return;
-                  }
-                  setDeepThink((prev) => {
-                    const next = !prev;
-                    if (typeof window !== "undefined") {
-                      localStorage.setItem("credon-deep-think", next ? "1" : "0");
-                    }
-                    return next;
-                  });
-                }}
-                className={`h-10 rounded-lg border text-[11px] font-medium transition ${deepThink ? "border-cyan-500/50 bg-cyan-500/12 text-cyan-200" : "border-zinc-700/50 bg-zinc-900/70 text-zinc-400"}`}
-                title={isGuest ? "Sign in to use DeepThink" : "Toggle DeepThink"}
-              >
-                DeepThink
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (isGuest) {
-                    setLoginPrompt("code-mode");
-                    return;
-                  }
-                  setCodeMode((prev) => {
-                    const next = !prev;
-                    if (typeof window !== "undefined") {
-                      localStorage.setItem("credon-code-mode", next ? "1" : "0");
-                    }
-                    return next;
-                  });
-                }}
-                className={`h-10 rounded-lg border text-[11px] font-medium transition ${codeMode ? "border-cyan-500/50 bg-cyan-500/12 text-cyan-200" : "border-zinc-700/50 bg-zinc-900/70 text-zinc-400"}`}
-                title={isGuest ? "Sign in to use Code Mode" : "Toggle Code Mode"}
-              >
-                Code Mode
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (isGuest) {
-                    setLoginPrompt("knowledge");
-                    return;
-                  }
-                  setKnowledgeOpen(true);
-                }}
-                className="h-10 rounded-lg border border-zinc-700/50 bg-zinc-900/70 text-[11px] font-medium text-zinc-300 transition hover:border-emerald-500/50 hover:text-emerald-300"
-                title={isGuest ? "Sign in to upload knowledge" : "Upload notes and PDFs"}
-              >
-                Knowledge
-              </button>
+            <div className="sm:hidden mb-2">
+              {mobileModesOpen && (
+                <div className="rounded-xl border border-zinc-700/50 bg-zinc-900/95 backdrop-blur-xl p-2 shadow-2xl">
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isGuest) {
+                          setLoginPrompt("code-mode");
+                          return;
+                        }
+                        setCodeMode((prev) => {
+                          const next = !prev;
+                          if (typeof window !== "undefined") {
+                            localStorage.setItem("credon-code-mode", next ? "1" : "0");
+                          }
+                          return next;
+                        });
+                      }}
+                      className={`h-9 rounded-lg border text-[11px] font-medium transition ${codeMode ? "border-cyan-500/45 bg-cyan-500/12 text-cyan-200" : "border-zinc-700/50 bg-zinc-900/80 text-zinc-400"}`}
+                    >
+                      Code Mode
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isGuest) {
+                          setLoginPrompt("knowledge");
+                          return;
+                        }
+                        setKnowledgeOpen(true);
+                        setMobileModesOpen(false);
+                      }}
+                      className="h-9 rounded-lg border border-zinc-700/50 bg-zinc-900/80 text-[11px] font-medium text-zinc-300 transition hover:border-emerald-500/50 hover:text-emerald-300"
+                    >
+                      Knowledge
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-            <div className={`flex gap-1.5 sm:gap-2 items-end bg-zinc-900/80 border rounded-2xl px-2 sm:px-3 py-2 focus-within:border-cyan-500/40 focus-within:shadow-cyan-500/5 transition-all shadow-lg shadow-black/20 ${allModesActive ? "border-cyan-500/45 trinity-glow" : "border-zinc-700/50"}`}>
+            <div className={`flex gap-1 sm:gap-2 items-end bg-zinc-900/80 border rounded-2xl px-1.5 sm:px-3 py-1.5 sm:py-2 focus-within:border-cyan-500/40 focus-within:shadow-cyan-500/5 transition-all shadow-lg shadow-black/20 ${allModesActive ? "border-cyan-500/45 trinity-glow" : "border-zinc-700/50"}`}>
               {/* Attach file button */}
               <button type="button" onClick={() => fileInputRef.current?.click()}
-                className="p-2 text-zinc-500 hover:text-zinc-300 transition rounded-lg hover:bg-zinc-800/60 shrink-0" title="Attach image or PDF">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                className="p-1.5 sm:p-2 text-zinc-500 hover:text-zinc-300 transition rounded-lg hover:bg-zinc-800/60 shrink-0" title="Attach image or PDF">
+                <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                </svg>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMobileModesOpen((prev) => !prev)}
+                className={`sm:hidden p-1.5 rounded-lg transition shrink-0 ${mobileModesOpen ? "text-cyan-300 bg-cyan-500/10" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
+                title="Modes"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 6h18M7 12h10M10 18h4" />
                 </svg>
               </button>
 
@@ -2919,9 +3126,9 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                   }
                   setUseWeb((prev) => !prev);
                 }}
-                className={`hidden sm:flex p-2 rounded-lg transition shrink-0 ${useWeb ? "text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
+                className={`flex p-1.5 sm:p-2 rounded-lg transition shrink-0 ${useWeb ? "text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
                 title={isGuest ? "Sign in to use Web Search" : useWeb ? "Web search ON" : "Web search OFF"}>
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" />
                 </svg>
               </button>
@@ -2942,10 +3149,10 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                     return next;
                   });
                 }}
-                className={`hidden sm:flex p-2 rounded-lg transition shrink-0 ${deepThink ? "text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
+                className={`flex p-1.5 sm:p-2 rounded-lg transition shrink-0 ${deepThink ? "text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
                 title={isGuest ? "Sign in to use DeepThink" : deepThink ? "DeepThink ON" : "DeepThink OFF"}
               >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
                 </svg>
               </button>
@@ -2998,19 +3205,19 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 onKeyDown={handleKeyDown}
                 placeholder="Message Credon AI&#8230;"
                 rows={1}
-                className="flex-1 bg-transparent py-2.5 outline-none text-[14px] sm:text-[15px] placeholder:text-zinc-500 resize-none max-h-37.5 leading-relaxed"
+                className="flex-1 min-w-0 bg-transparent py-2.5 outline-none text-[15px] sm:text-[15px] placeholder:text-zinc-500 resize-none max-h-37.5 leading-relaxed"
               />
 
               {/* Send / Stop button */}
               {loading ? (
                 <button type="button" onClick={stopGeneration}
-                  className="w-9 h-9 rounded-xl bg-zinc-700 flex items-center justify-center hover:bg-zinc-600 transition shrink-0 mb-0.5" title="Stop">
+                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-zinc-700 flex items-center justify-center hover:bg-zinc-600 transition shrink-0 mb-0.5" title="Stop">
                   <div className="w-3.5 h-3.5 rounded-sm bg-white" />
                 </button>
               ) : (
                 <button type="submit" disabled={(!query.trim() && attachedFiles.length === 0) || uploadingFiles}
-                  className="w-9 h-9 rounded-xl bg-linear-to-r from-cyan-500 to-blue-600 flex items-center justify-center disabled:opacity-30 transition hover:brightness-110 shrink-0 mb-0.5" title="Send">
-                  <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-linear-to-r from-cyan-500 to-blue-600 flex items-center justify-center disabled:opacity-30 transition hover:brightness-110 shrink-0 mb-0.5" title="Send">
+                  <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
                   </svg>
                 </button>
