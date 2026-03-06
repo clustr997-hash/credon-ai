@@ -97,6 +97,11 @@ def _firebase_client() -> Any | None:
     return firestore.client()
 
 
+def get_firestore_client() -> Any | None:
+    """Public wrapper for services that need the shared Firestore client logic."""
+    return _firebase_client()
+
+
 _load_local_store()
 
 

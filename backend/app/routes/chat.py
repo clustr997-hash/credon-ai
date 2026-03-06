@@ -13,6 +13,8 @@ from app.models.schemas import (
     ImageResult,
     Source,
     FeedbackRequest,
+    NotificationTokenRequest,
+    NotificationTestRequest,
 )
 from app.services.chat_store import get_transcript, list_sessions, save_message
 from app.services.memory_answer import (
@@ -41,6 +43,8 @@ from app.services.answer_validator import (
     extract_suggestions,
     trim_answer_suggestions,
 )
+from app.services.push_store import save_user_push_token
+from app.services.push_notify import send_test_push
 from app.utils.language import detect_language
 from time import perf_counter
 
@@ -1553,3 +1557,23 @@ def submit_feedback(payload: FeedbackRequest):
         print(f"[Credon Feedback] Error updating learned DB: {exc}")
 
     return {"ok": True}
+
+
+@router.post("/notifications/token")
+def register_notification_token(payload: NotificationTokenRequest) -> dict[str, object]:
+    """Register/update a user's push notification token."""
+    token = payload.token.strip()
+    save_user_push_token(payload.user_id, token, payload.platform)
+    return {
+        "ok": True,
+        "user_id": payload.user_id,
+        "platform": payload.platform,
+        "token_preview": f"{token[:12]}...{token[-8:]}",
+    }
+
+
+@router.post("/notifications/test")
+def send_notification_test(payload: NotificationTestRequest) -> dict[str, object]:
+    """Send a test push notification to all registered tokens for a user."""
+    result = send_test_push(payload.user_id, payload.title.strip(), payload.body.strip())
+    return cast(dict[str, object], result)

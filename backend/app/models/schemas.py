@@ -48,6 +48,18 @@ class FeedbackRequest(BaseModel):
     category: Literal["irrelevant", "incorrect", "too_slow", "too_long", "other"] | None = None
 
 
+class NotificationTokenRequest(BaseModel):
+    user_id: str = Field(min_length=1)
+    token: str = Field(min_length=20)
+    platform: Literal["web", "android", "ios"] = "web"
+
+
+class NotificationTestRequest(BaseModel):
+    user_id: str = Field(min_length=1)
+    title: str = Field(min_length=1, max_length=120)
+    body: str = Field(min_length=1, max_length=400)
+
+
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     text: str

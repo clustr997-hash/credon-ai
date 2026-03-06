@@ -1,17 +1,19 @@
-# Credon AI — Full Technical Guide
+# Credon AI - Full Technical Guide
 
 Credon AI is a retrieval-first, memory-aware assistant with local-model routing, optional cloud fallback, OCR ingestion, and persistent knowledge storage.
 
 ## 1) Current Stack
 
 ### Frontend
+
 - Next.js (App Router) + TypeScript
 - Streaming chat UX (SSE)
 - Firebase auth integration (optional, graceful guest mode)
-- Reply context, regenerate, TL;DR, simplify actions
-- Image attachments UI (marker support; full binary upload now available via backend ingest APIs)
+- Reply context, regenerate, TLDR, simplify actions
+- Image attachments UI (full binary upload available via backend ingest APIs)
 
-### Backend
+### Backend Setup
+
 - FastAPI (`/api/v1/*`)
 - Retrieval pipeline (`ddgs` + fallbacks)
 - Model orchestration for Ollama + DeepSeek cloud option
@@ -19,72 +21,80 @@ Credon AI is a retrieval-first, memory-aware assistant with local-model routing,
 - OCR ingestion and vector knowledge retrieval
 
 ### Database / Storage
-- Primary: Firebase Firestore (when configured)
-- Local fallback JSON files (when Firebase unavailable)
 
-## 2) Data Storage — Exactly Where
+- Primary: Firebase Firestore (when configured)
+- Local fallback JSON files (when Firebase is unavailable)
+
+## 2) Data Storage - Exact Paths
 
 ### Chat Sessions
-- Firestore:
-  - `users/{user_id}/sessions/{session_id}/messages/*`
-  - `users/{user_id}/sessions/{session_id}` (metadata)
-- Local fallback:
-  - `backend/data/chat_store.json`
 
-### Learned Q&A Memory
+- Firestore:
+- `users/{user_id}/sessions/{session_id}/messages/*`
+- `users/{user_id}/sessions/{session_id}` (metadata)
+- Local fallback:
+- `backend/data/chat_store.json`
+
+### Learned Q and A Memory
+
 - Local file:
-  - `backend/data/credon_learned.json`
+- `backend/data/credon_learned.json`
 
 ### OCR / Vector Knowledge Store
+
 - Firestore:
-  - `users/{user_id}/knowledge_chunks/*`
+- `users/{user_id}/knowledge_chunks/*`
 - Local fallback:
-  - `backend/data/knowledge_vectors.json`
+- `backend/data/knowledge_vectors.json`
+
+### Push Tokens (FCM)
+
+- Firestore:
+- `users/{user_id}/push_tokens/*`
+- Local fallback:
+- `backend/data/push_tokens.json`
 
 ## 3) Model Routing and Failover
 
-Credon now retries local models automatically when selected Ollama model fails (e.g., HTTP 500).
+Credon retries local models automatically when the selected Ollama model fails.
 
 ### Behavior
+
 1. Try selected model.
 2. If failure, retry healthy local models in priority order.
 3. If all fail, fallback to Credon synthesized answer path.
 
-This keeps long web-grounded answers usable even during model instability.
-
-## 4) OCR + Ingestion APIs (New)
+## 4) OCR + Ingestion APIs
 
 ### `POST /api/v1/ingest/pdf`
+
 Multipart form:
+
 - `user_id` (string)
 - `file` (PDF)
 
 Flow:
+
 1. Extract text with `pypdf`.
-2. If low/empty text, OCR pages (`pypdfium2` render + `pytesseract`).
+2. If text is weak/empty, OCR pages (`pypdfium2` + `pytesseract`).
 3. Chunk text, embed chunks, store vectors.
 
 ### `POST /api/v1/ingest/image`
+
 Multipart form:
+
 - `user_id` (string)
 - `file` (image)
 
 Flow:
+
 1. OCR image via `pytesseract`.
 2. Chunk + embed + store in knowledge DB.
 
-## 5) Knowledge Retrieval in Chat
-
-For each query:
-1. Retrieve top user-specific knowledge chunks from vector store.
-2. Merge with web results (if web enabled).
-3. Generate grounded answer from merged context.
-
-Result: Credon uses user-uploaded docs/images + web + model reasoning together.
-
-## 6) APIs Available
+## 5) APIs Available
 
 - `GET /health`
+- `GET /health/providers`
 - `GET /api/v1/models`
 - `POST /api/v1/chat`
 - `POST /api/v1/chat/stream`
@@ -93,10 +103,13 @@ Result: Credon uses user-uploaded docs/images + web + model reasoning together.
 - `POST /api/v1/feedback`
 - `POST /api/v1/ingest/pdf`
 - `POST /api/v1/ingest/image`
+- `POST /api/v1/notifications/token`
+- `POST /api/v1/notifications/test`
 
-## 7) Environment Variables
+## 6) Environment Variables
 
-Core:
+### Core
+
 - `MODEL_RUNTIME_MODE=auto` (`cloud` for production lock)
 - `USE_MODEL_GENERATION=true`
 - `USE_LOCAL_MODEL=true`
@@ -106,7 +119,8 @@ Core:
 - `USE_WEB_SEARCH=true`
 - `ENABLE_PAGE_EXTRACTION=false`
 
-Cloud optional:
+### Cloud Optional
+
 - `DEEPSEEK_API_KEY=...`
 - `DEEPSEEK_BASE_URL=https://api.deepseek.com`
 - `DEEPSEEK_MODEL=deepseek-reasoner`
@@ -114,119 +128,132 @@ Cloud optional:
 - `GROQ_BASE_URL=https://api.groq.com/openai/v1`
 - `GROQ_MODEL=llama-3.3-70b-versatile`
 
-Retrieval providers (optional but recommended in production):
+### Retrieval Providers (Optional but Recommended)
+
 - `SERPER_API_KEY=...`
 - `LANGSEARCH_API_KEY=...`
 - `LANGSEARCH_BASE_URL=https://api.langsearch.com/v1/web-search`
 
-Firebase optional:
+### Firebase Optional
+
 - `FIREBASE_SERVICE_ACCOUNT_PATH=backend/secrets/firebase-service-account.json`
 - or `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`
 
-OCR optional tuning:
-- `TESSERACT_CMD=C:/Program Files/Tesseract-OCR/tesseract.exe`
+### Frontend FCM
 
-## 8) Setup
+- `NEXT_PUBLIC_FIREBASE_API_KEY=...`
+- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=...`
+- `NEXT_PUBLIC_FIREBASE_PROJECT_ID=...`
+- `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=...`
+- `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=...`
+- `NEXT_PUBLIC_FIREBASE_APP_ID=...`
+- `NEXT_PUBLIC_FIREBASE_VAPID_KEY=...`
+- `NEXT_PUBLIC_API_BASE=http://127.0.0.1:8000`
+
+## 7) Local Setup
 
 ### Backend
+
 ```bash
 backend/.venv/Scripts/python.exe -m pip install -r backend/requirements.txt
 backend/.venv/Scripts/python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
 ```
 
-### Frontend
+### Frontend Setup
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-## 9) Scale Plan (How Credon Becomes Powerful)
-
-### Stage A — Reliability
-- Keep model failover + health checks.
-- Add request/latency/error telemetry by endpoint and model.
-- Add queue-based retry for ingest jobs.
-
-### Stage B — Data Intelligence
-- Build cleaner preference dataset from `/feedback` + regenerate actions.
-- Add approval pipeline for high-quality learned entries.
-- Add eval suite: factuality, follow-up coherence, language consistency.
-
-### Stage C — Better Models
-- Use stronger local models for premium tier.
-- Add cloud fallback for peak traffic.
-- Build model routing by task type + latency budget.
-
-### Stage D — API Productization
-- API keys + tenant isolation + quotas.
-- Metering + billing + usage analytics.
-- Versioned contracts (`/api/v1`, `/api/v2`) with compatibility policy.
-
-### Stage E — Learning Loop (RLHF/RLAIF/DPO)
-- Collect pairwise preferences (accepted vs regenerated answers).
-- RLAIF scoring pass by stronger evaluator model.
-- DPO fine-tuning cycle per release (`credon-alpha-*`).
-
-## 10) Notes and Limits
-
-- OCR quality depends on scan quality and Tesseract installation.
-- If OCR cannot extract text, API returns explicit error.
-- Attachment UI currently sends markers in chat; true binary ingestion should call `/ingest/pdf` or `/ingest/image` directly.
-
-## 11) FCM Setup (Step-by-Step)
-
-FCM is optional. Credon runs without it.
+## 8) Firebase Cloud Messaging Setup (VAPID)
 
 1. Open Firebase Console -> Project Settings -> Cloud Messaging.
-2. Enable Cloud Messaging API (if prompted).
-3. Create a Web Push certificate key (VAPID) and copy it.
-4. In frontend env (`frontend/.env.local`) add:
-```bash
-NEXT_PUBLIC_FIREBASE_API_KEY=...
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=...
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=...
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=...
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=...
-NEXT_PUBLIC_FIREBASE_APP_ID=...
-NEXT_PUBLIC_FIREBASE_VAPID_KEY=YOUR_VAPID_KEY
-NEXT_PUBLIC_API_BASE=http://127.0.0.1:8000
-```
-5. Run frontend and open Settings -> Push Notifications (FCM) -> Enable.
-6. Credon generates a browser token. Save token on backend if you want targeted push notifications later.
+2. Ensure Firebase Cloud Messaging API (v1) is enabled.
+3. In Web Push certificates, create/get your VAPID key pair.
+4. Add the public VAPID key to `frontend/.env.local` as `NEXT_PUBLIC_FIREBASE_VAPID_KEY`.
+5. Restart frontend dev server.
+6. Open Credon settings and click Enable Notifications.
+7. Credon now auto-registers this browser token to backend (`/api/v1/notifications/token`).
+8. Optional test from backend:
 
-## 12) Autonomous Trainer Bot (Safe Mode)
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/notifications/test ^
+  -H "Content-Type: application/json" ^
+  -d "{\"user_id\":\"your-user-id\",\"title\":\"Credon Test\",\"body\":\"Push is working\"}"
+```
+
+## 9) Firebase Hosting Step-by-Step
+
+- Install CLI:
+
+```bash
+npm install -g firebase-tools
+```
+
+- Login:
+
+```bash
+firebase login
+```
+
+- Verify project alias file exists (`.firebaserc`) and points to `credonai`.
+- Build frontend:
+
+```bash
+cd frontend
+npm run build
+```
+
+- Deploy hosting from repo root:
+
+```bash
+cd ..
+firebase deploy --only hosting
+```
+
+- Open Firebase Console -> Hosting and verify latest release.
+- For auto deploy, keep using `.github/workflows/firebase-hosting-deploy.yml` on push to `main`.
+
+## 10) Why Not Supabase as Primary Right Now?
+
+- Credon already uses Firebase Auth + Firestore flows deeply in chat/session paths.
+- Firestore integrates quickly for nested user/session/message documents.
+- Existing fallback JSON files make local/offline dev easy with no extra infra.
+- Supabase is still useful and the repo already has `backend/scripts/setup_supabase_pgvector.sql` for vector-oriented expansion.
+
+If you want, Supabase can be introduced in phases:
+
+1. Keep Auth + sessions on Firebase.
+2. Move vectors/retrieval storage to Supabase pgvector.
+3. Add a feature flag for storage backend (`firebase` vs `supabase`).
+4. Gradually migrate chat/session storage once parity tests pass.
+
+## 11) Autonomous Trainer Bot (Safe Mode)
 
 Use `backend/scripts/autonomous_feedback_bot.py` with strict limits.
 
-Example:
 ```bash
-backend/.venv/Scripts/python.exe backend/scripts/autonomous_feedback_bot.py --base-url http://127.0.0.1:8000 --user-id trainer-bot --loops 6 --daily-cap 40 --hourly-cap 10 --max-downvotes-per-run 2 --sleep-sec 2
+backend/.venv/Scripts/python.exe backend/scripts/autonomous_feedback_bot.py --base-url http://127.0.0.1:8000 --user-id trainer-bot --loops 6 --daily-cap 40 --hourly-cap 10 --max-downvotes-per-run 2 --chat-timeout-sec 35 --sleep-sec 2
 ```
 
 Safety behavior:
-- Uses dedicated user id (`trainer-bot`) so it does not interfere with real user sessions.
-- Enforces daily + hourly caps to protect Firebase/API quotas.
-- Limits downvotes per run to avoid noisy negative training.
-- Stores run state in `backend/data/autonomous_feedback_bot_state.json`.
 
-## 13) GitHub -> Firebase Auto Deploy
+- Dedicated user id (`trainer-bot`) avoids real-user session impact.
+- Daily + hourly caps protect quota.
+- Per-run downvote cap avoids noisy negative learning.
+- Retries transient chat failures before marking loop failed.
 
-Workflow file already exists: `.github/workflows/firebase-hosting-deploy.yml`.
+## 12) Notes and Limits
 
-Required one-time setup:
-1. Push repository to GitHub and make sure default branch is `main`.
-2. In GitHub -> Settings -> Secrets and variables -> Actions, add secret:
-  - `FIREBASE_SERVICE_ACCOUNT_CREDONAI` (service account JSON for Hosting deploy).
-3. Verify `firebase.json` and `.firebaserc` point to your Firebase project.
-4. Push any change in `frontend/**` to `main`.
+- OCR quality depends on scan quality and Tesseract installation.
+- Backend production deploy is separate from Firebase Hosting deploy.
+- FCM delivery requires valid service account credentials on backend side for send operations.
 
-What auto-updates:
-- Firebase Hosting frontend deploy.
+## 13) Current Next Steps
 
-What does not auto-update from this workflow:
-- FastAPI backend runtime (deploy backend separately on your backend host).
-
----
-
-If you want, next step I can implement frontend upload integration to call these ingest APIs directly before chat so image/PDF context is automatically available in the same conversation.
+1. Add your VAPID key into `frontend/.env.local` and restart frontend.
+2. Run one notification enable flow and verify backend token registration in logs.
+3. Run `/api/v1/notifications/test` to confirm push delivery.
+4. Keep frontend auto-deploy through GitHub Action; deploy backend on your runtime host.

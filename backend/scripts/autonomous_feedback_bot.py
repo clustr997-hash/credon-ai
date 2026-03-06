@@ -7,6 +7,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from typing import cast
 
 import requests
 
@@ -32,7 +33,7 @@ def _load_state() -> dict[str, Any]:
     try:
         raw = json.loads(STATE_FILE.read_text(encoding="utf-8"))
         if isinstance(raw, dict):
-            return raw
+            return cast(dict[str, Any], raw)
     except Exception:
         pass
     return {"day": "", "count": 0, "hour": "", "hour_count": 0, "last_run": "", "history": []}
@@ -85,6 +86,9 @@ def run_bot(
     chat_timeout_sec: float,
     sleep_sec: float,
 ) -> int:
+    http = requests.Session()
+    http.headers.update({"Content-Type": "application/json"})
+
     state = _load_state()
     day_key = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     hour_key = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H")
@@ -106,6 +110,7 @@ def run_bot(
     history = state.get("history", [])
     if not isinstance(history, list):
         history = []
+    history = cast(list[dict[str, Any]], history)
 
     downvotes_used = 0
     for i in range(loops):
@@ -121,13 +126,32 @@ def run_bot(
         }
 
         try:
-            r = requests.post(f"{base_url}/api/v1/chat", json=payload, timeout=max(5.0, chat_timeout_sec))
-            r.raise_for_status()
-            data = r.json()
+            data: dict[str, Any] | None = None
+            last_error = ""
+            for attempt in range(3):
+                try:
+                    r = http.post(f"{base_url}/api/v1/chat", json=payload, timeout=max(5.0, chat_timeout_sec))
+                    r.raise_for_status()
+                    maybe_data = r.json()
+                    if isinstance(maybe_data, dict):
+                        typed_data: dict[str, Any] = cast(dict[str, Any], maybe_data)
+                        data = typed_data
+                        break
+                    last_error = "invalid_json_payload"
+                except Exception as exc:
+                    last_error = str(exc)
+                    time.sleep(1.0 + attempt)
+
+            if data is None:
+                raise RuntimeError(f"chat_request_failed_after_retries: {last_error}")
+
             answer = str(data.get("answer", ""))
-            sources = data.get("sources")
+            if len(answer.strip()) < 25:
+                raise RuntimeError("empty_or_too_short_answer")
+            sources_any = data.get("sources")
+            sources = cast(list[dict[str, Any]] | None, sources_any if isinstance(sources_any, list) else None)
             thinking = str(data.get("thinking", ""))
-            vote, reason = _score_answer(answer, prompt, sources if isinstance(sources, list) else None, thinking)
+            vote, reason = _score_answer(answer, prompt, sources, thinking)
 
             if vote == "down" and downvotes_used >= max_downvotes_per_run:
                 vote = "up"
@@ -141,7 +165,7 @@ def run_bot(
                 "category": "other" if vote == "down" else None,
                 "reason": reason if vote == "down" else None,
             }
-            fr = requests.post(f"{base_url}/api/v1/feedback", json=feedback_payload, timeout=45)
+            fr = http.post(f"{base_url}/api/v1/feedback", json=feedback_payload, timeout=45)
             fr.raise_for_status()
             if vote == "down":
                 downvotes_used += 1

@@ -1492,7 +1492,21 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       if (typeof window !== "undefined") {
         localStorage.setItem("credon-fcm-token", result.token);
       }
-      setFcmStatus(`Enabled. Token ready (${shortToken}). Register this token on backend for targeted pushes.`);
+      try {
+        const reg = await fetch(`${API}/api/v1/notifications/token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: uid, token: result.token, platform: "web" }),
+        });
+        if (!reg.ok) {
+          setFcmStatus(`Enabled (${shortToken}), but backend token registration failed (${reg.status}).`);
+          return;
+        }
+      } catch {
+        setFcmStatus(`Enabled (${shortToken}), but backend token registration failed (network error).`);
+        return;
+      }
+      setFcmStatus(`Enabled and registered (${shortToken}). You can now send test pushes from backend.`);
       return;
     }
     setFcmStatus(`Pending: ${result.error || "Unknown notification setup issue."}`);
