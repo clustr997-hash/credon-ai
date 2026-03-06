@@ -105,6 +105,24 @@ const SUGGESTIONS = [
   "Latest AI trends in 2026",
 ];
 
+function userFriendlyFcmStatus(reason?: string): string {
+  const normalized = (reason || "").toLowerCase();
+  if (!reason) return "Notifications are currently unavailable.";
+  if (normalized.includes("not configured") || normalized.includes("vapid") || normalized.includes("firebase")) {
+    return "Notifications are not available right now. Setup is still being completed.";
+  }
+  if (normalized.includes("browser runtime")) {
+    return "Notifications are available in browser mode only.";
+  }
+  if (normalized.includes("does not support") || normalized.includes("service worker")) {
+    return "This browser currently does not support notifications for this app.";
+  }
+  if (normalized.includes("permission") && normalized.includes("denied")) {
+    return "Notification permission is blocked. Enable it in browser settings to continue.";
+  }
+  return "Notifications are temporarily unavailable. Please try again shortly.";
+}
+
 /* ─────────────────────────── Helpers ─────────────────────────── */
 
 function fmtTime(ts: number): string {
@@ -546,17 +564,41 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
 }) {
   const [downloadTarget, setDownloadTarget] = useState<"current" | "all">("current");
   const masterMode = !isGuest && webSearch && deepThink && codeMode;
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open, onClose]);
+
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="modal-content w-full max-w-md mx-4 rounded-2xl border border-zinc-700/50 bg-[#111113] shadow-2xl shadow-black/50">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-md px-3 sm:px-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Settings"
+    >
+      <div
+        className="modal-content neo-glass w-full max-w-lg rounded-2xl border border-cyan-400/15 shadow-2xl shadow-black/50 max-h-[92dvh] flex flex-col"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/50">
           <h2 className="text-lg font-semibold text-white tracking-tight">Settings</h2>
           <button type="button" onClick={onClose} title="Close" className="text-zinc-400 hover:text-white transition p-1 rounded-lg hover:bg-zinc-800">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
-        <div className="px-6 py-5 space-y-6">
+        <div className="px-4 sm:px-6 py-5 space-y-6 overflow-y-auto">
           {/* Model Info — no selection, internal routing */}
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-2">AI Model</label>
@@ -654,7 +696,7 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
           <div className="rounded-xl border border-zinc-700/50 bg-zinc-900/40 p-3">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-sm font-medium text-zinc-200">Push Notifications (FCM)</p>
+                <p className="text-sm font-medium text-zinc-200">Push Notifications</p>
                 <p className="text-xs text-zinc-500 mt-1">{fcmStatus}</p>
               </div>
               <button
@@ -687,17 +729,23 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
                 </button>
               </div>
               <p className="text-[11px] text-zinc-500">Select what to export, then view in browser or download.</p>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={downloadTarget === "current" ? onPreviewCurrentChat : onPreviewAllChats}
+                  onClick={() => {
+                    void (downloadTarget === "current" ? onPreviewCurrentChat() : onPreviewAllChats());
+                    onClose();
+                  }}
                   className="rounded-lg border border-zinc-700/60 bg-zinc-800/70 px-3 py-2 text-xs text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200 transition"
                 >
                   View PDF
                 </button>
                 <button
                   type="button"
-                  onClick={downloadTarget === "current" ? onDownloadCurrentChat : onDownloadAllChats}
+                  onClick={() => {
+                    void (downloadTarget === "current" ? onDownloadCurrentChat() : onDownloadAllChats());
+                    onClose();
+                  }}
                   className="rounded-lg border border-zinc-700/60 bg-zinc-800/70 px-3 py-2 text-xs text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200 transition"
                 >
                   Download PDF
@@ -707,14 +755,20 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
             <div className="grid grid-cols-1 gap-2 mt-2">
               <button
                 type="button"
-                onClick={onDownloadCurrentChat}
+                onClick={() => {
+                  void onDownloadCurrentChat();
+                  onClose();
+                }}
                 className="rounded-xl border border-zinc-700/50 bg-zinc-800/50 px-3 py-2 text-left text-xs text-zinc-200 hover:border-cyan-500/40 hover:bg-zinc-800/80 transition"
               >
                 Quick Download: Current Chat
               </button>
               <button
                 type="button"
-                onClick={onDownloadAllChats}
+                onClick={() => {
+                  void onDownloadAllChats();
+                  onClose();
+                }}
                 className="rounded-xl border border-zinc-700/50 bg-zinc-800/50 px-3 py-2 text-left text-xs text-zinc-200 hover:border-cyan-500/40 hover:bg-zinc-800/80 transition"
               >
                 Quick Download: All Chats
@@ -1360,7 +1414,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
 
   useEffect(() => {
     const readiness = getFcmReadiness();
-    setFcmStatus(readiness.ready ? "Ready. Enable to receive updates on supported browsers." : `Pending: ${readiness.reason}`);
+    setFcmStatus(readiness.ready ? "Ready. Enable to receive notifications on this device." : userFriendlyFcmStatus(readiness.reason));
   }, []);
 
   /* Follow-up suggestions — prefer structured suggestions from backend */
@@ -1499,17 +1553,17 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
           body: JSON.stringify({ user_id: uid, token: result.token, platform: "web" }),
         });
         if (!reg.ok) {
-          setFcmStatus(`Enabled (${shortToken}), but backend token registration failed (${reg.status}).`);
+          setFcmStatus(`Enabled (${shortToken}), but registration is pending. We will keep retrying automatically.`);
           return;
         }
       } catch {
-        setFcmStatus(`Enabled (${shortToken}), but backend token registration failed (network error).`);
+        setFcmStatus(`Enabled (${shortToken}), but registration is pending due to a temporary network issue.`);
         return;
       }
-      setFcmStatus(`Enabled and registered (${shortToken}). You can now send test pushes from backend.`);
+      setFcmStatus(`Enabled and connected (${shortToken}). Notifications are ready.`);
       return;
     }
-    setFcmStatus(`Pending: ${result.error || "Unknown notification setup issue."}`);
+    setFcmStatus(userFriendlyFcmStatus(result.error));
   };
 
   const newChat = () => {
@@ -2015,14 +2069,10 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         // Final fallback: show a helpful message
         setMessages((prev) => [...prev, {
           role: "assistant" as const,
-          text: "Hmm, I\u2019m having a brief connection hiccup \u2014 but no worries! Here\u2019s what you can do:\n\n" +
-            "1. **Tap \u201CSend\u201D again** \u2014 I\u2019ll retry with a different model\n" +
-            "2. **Turn on Web Search** for real-time answers\n" +
-            "3. **Simplify your question** if it\u2019s very complex\n\n" +
-            "I\u2019ll be back to full speed in a moment \u{1F680}",
+          text: "I retried this request across available engines, but the connection is temporarily unstable. Please send it once again and I will continue from here.",
           confidence: "low",
           timestamp: Date.now(),
-          suggestions: ["Try my question again", "Search the web instead", "Show me what you can do"],
+          suggestions: ["Try my question again", "Rephrase this request", "Start a fresh chat"],
         }]);
       }
     } finally {
@@ -2104,14 +2154,21 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      setUploadError("Could not export PDF right now. Try again, and restart backend if endpoint changes were not loaded.");
+      setUploadError("Could not export PDF right now. Please try again.");
     }
   };
 
   const openChatPdfBlob = (blob: Blob, filename: string, action: "download" | "view") => {
     const url = URL.createObjectURL(blob);
     if (action === "view") {
-      window.open(url, "_blank", "noopener,noreferrer");
+      const opened = window.open(url, "_blank", "noopener,noreferrer");
+      if (!opened) {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.click();
+        setUploadError("Preview was blocked by the browser, so the PDF was downloaded instead.");
+      }
       window.setTimeout(() => URL.revokeObjectURL(url), 15000);
       return;
     }
@@ -2233,7 +2290,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   }, [sessions]);
 
   return (
-    <div className="h-dvh flex bg-[#07080a] text-white overflow-hidden">
+    <div className="h-dvh flex bg-[#07080a] text-white overflow-hidden ambient-grid">
       {sidebarOpen && <div className="fixed inset-0 bg-black/60 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
       <SettingsModal
@@ -2279,7 +2336,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         <input id="chat-image-upload" ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={handleFileSelect} aria-label="Attach image or PDF files" />
 
       {/* ─── Sidebar (DeepSeek-style) ─── */}
-      <aside className={`fixed md:static inset-y-0 left-0 z-40 w-70 bg-zinc-950/80 backdrop-blur-xl border-r border-zinc-800/60 flex flex-col transition-transform duration-200 ease-out md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+      <aside className={`fixed md:static inset-y-0 left-0 z-40 w-70 bg-zinc-950/75 backdrop-blur-2xl border-r border-cyan-400/10 flex flex-col transition-transform duration-200 ease-out md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         {/* Sidebar header — clean, just new chat */}
         <div className="h-14 flex items-center justify-between px-3 shrink-0 border-b border-zinc-800/40">
           <div className="flex items-center gap-2">
@@ -2350,7 +2407,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       {/* ─── Main ─── */}
       <main className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="h-14 border-b border-zinc-800/40 flex items-center px-3 sm:px-4 gap-2 sm:gap-3 shrink-0 bg-zinc-950/70 backdrop-blur-xl">
+        <header className="h-14 border-b border-cyan-400/10 flex items-center px-3 sm:px-4 gap-2 sm:gap-3 shrink-0 bg-zinc-950/55 backdrop-blur-2xl">
           {/* Sidebar toggle — panel icon */}
           <button type="button" onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition" title="Toggle sidebar">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

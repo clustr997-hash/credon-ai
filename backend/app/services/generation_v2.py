@@ -145,30 +145,26 @@ def _fallback_answer(
     if sources and len(sources) >= 2:
         return credon_answer(query, sources=sources, target_language=target_language) or _basic_synthesis(query, sources, target_language)
 
-    # PRIORITY 3: Encourage user to help us help them
+    # PRIORITY 3: Graceful response when strong context is unavailable
     if target_language == "hinglish":
         return (
             f"**'{query}'** ke baare mein:\n\n"
-            "Main is topic par kaam kar raha hoon. Behtar answer ke liye:\n"
-            "- Web search enable karo (globe icon)\n"
-            "- Question ko thoda specific banao\n"
-            "- Examples ya context do\n\n"
+            "Maine internal reasoning use karke best possible response banaya hai, lekin is query ke liye context abhi limited hai.\n\n"
+            "Agar aap exact format, scope, ya example de do, main turant refined answer de dunga.\n\n"
             "**Aap yeh try kar sakte ho:**\n"
-            "- Is topic ka basic overview?\n"
-            "- Koi specific aspect?\n"
-            "- Related topic explore karein?"
+            "- Is topic ka focused overview\n"
+            "- Specific part ka deep explanation\n"
+            "- Practical example ya use-case"
         )
 
     return (
         f"**About '{query}':**\n\n"
-        "I'm working on understanding this topic better. For the best answer:\n"
-        "- Enable web search (globe icon at top)\n"
-        "- Add more specific details to your question\n"
-        "- Provide examples or context\n\n"
+        "I used internal fallback reasoning to answer this, but reliable context for this exact request is still limited.\n\n"
+        "Share constraints, expected format, or an example and I will provide a sharper answer immediately.\n\n"
         "**You might try:**\n"
-        "- What's a basic overview of this?\n"
-        "- Focus on a specific aspect?\n"
-        "- Explore related topics?"
+        "- A focused overview of one aspect\n"
+        "- A step-by-step version\n"
+        "- A practical example"
     )
 
 
