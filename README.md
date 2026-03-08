@@ -257,3 +257,5 @@ Safety behavior:
 2. Run one notification enable flow and verify backend token registration in logs.
 3. Run `/api/v1/notifications/test` to confirm push delivery.
 4. Keep frontend auto-deploy through GitHub Action; deploy backend on your runtime host.
+
+- Hybrid roadmap: `docs/hybrid-rag-stack.md`
