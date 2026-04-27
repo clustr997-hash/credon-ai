@@ -125,6 +125,8 @@ def _public_model() -> dict[str, str | bool]:
 def _is_greeting(query: str) -> bool:
     """Detect greetings/small-talk that should NEVER trigger web search."""
     q = query.strip().lower()
+    if any(k in q for k in ["about you", "who are you", "what can you do", "tell me about you", "founder"]):
+        return False
     greeting_patterns = [
         r"^hi+$", r"^hello+$", r"^hey+$", r"^hii+$", r"^hola$",
         r"^good (morning|afternoon|evening|night)",
@@ -141,11 +143,36 @@ def _is_intro_query(query: str) -> bool:
         r"^who are you\??$",
         r"^what is this\??$",
         r"^what are you\??$",
+        r"^tell me about you\??$",
+        r"^about you\??$",
+        r"^i am talking about you\??$",
+        r"^what is credon\??$",
+        r"^introduce yourself\??$",
+        r"^what can credon do\??$",
     ]
     return any(re.search(p, q) for p in patterns)
 
+def _is_founder_query(query: str) -> bool:
+    q = query.strip().lower()
+    return any(
+        phrase in q
+        for phrase in [
+            "who is founder",
+            "who founded credon",
+            "founder of credon",
+            "credon founder",
+            "who made credon",
+            "who created credon",
+        ]
+    )
+
 
 def _greeting_response(query: str, language: Literal["en", "hinglish"]) -> str | None:
+    if _is_founder_query(query):
+        if language == "hinglish":
+            return "Credon AI ke founder **Swapnil Shinde** hain — 19-year-old CSE student."
+        return "Credon AI was founded by **Swapnil Shinde**, a 19-year-old CSE student."
+
     if _is_greeting(query):
         if language == "hinglish":
             return "Hey! 👋 Main Credon AI hoon. Aap kya explore karna chahte ho aaj?"
@@ -378,7 +405,8 @@ def _detect_requested_code_language(query: str) -> str | None:
 
 
 def _code_enhanced_query(query: str, code_mode_requested: bool) -> tuple[str, bool]:
-    code_mode_active = code_mode_requested or _is_programming_query(query)
+    # Respect explicit UI toggle only. If code mode is OFF, do not force code-style output.
+    code_mode_active = code_mode_requested
     if not code_mode_active:
         return query, False
     requested_language = _detect_requested_code_language(query)
@@ -663,17 +691,22 @@ def _is_contextual_followup(query: str) -> bool:
         r"^in simpler terms",
         r"^summarize this",
         r"^tl;dr",
+        r"^tell me more",
+        r"^more details",
+        r"^go deeper",
+        r"^continue",
+        r"^go on",
     ]
     return any(re.search(p, q) for p in patterns)
 
 
 def _is_ambiguous_short_followup(query: str) -> bool:
     q = query.lower().strip()
-    if len(q.split()) > 3:
+    if len(q.split()) > 5:
         return False
     if q.startswith("for "):
         return True
-    return q in {"explain", "simplify", "why", "how", "details", "more", "elaborate"}
+    return q in {"explain", "simplify", "why", "how", "details", "more", "elaborate", "tell me more", "go deeper", "go on"}
 
 
 def _is_reference_followup(query: str) -> bool:
@@ -708,11 +741,24 @@ def _extract_top_n_request(query: str) -> int | None:
     q = query.lower()
     match = re.search(r"\btop\s+(\d{1,2})\b", q)
     if match:
-        return max(3, min(30, int(match.group(1))))
+        return max(3, min(50, int(match.group(1))))
     match = re.search(r"\b(\d{1,2})\s+(news|headlines|updates)\b", q)
     if match:
-        return max(3, min(30, int(match.group(1))))
+        return max(3, min(50, int(match.group(1))))
     return None
+
+
+def _is_variation_request(query: str) -> bool:
+    q = query.lower()
+    patterns = [
+        r"\bdifferent answer\b",
+        r"\banswer differently\b",
+        r"\banother way\b",
+        r"\banother perspective\b",
+        r"\bdifferent approach\b",
+        r"\bdon't repeat\b",
+    ]
+    return any(re.search(p, q) for p in patterns)
 
 
 def _safe_int(value: object, default: int = 0) -> int:
@@ -776,6 +822,8 @@ def _shape_query_for_user_intent(
 
     if _is_math_query(original_query):
         hints.append("For math/problem solving, show step-by-step solution and final answer clearly.")
+    if _is_variation_request(original_query):
+        hints.append("Provide a meaningfully different angle/approach than earlier responses and avoid repeating the same wording.")
 
     if not hints:
         return query_for_model, {"detail_preference": detail_pref}

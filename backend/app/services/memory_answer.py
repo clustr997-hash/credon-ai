@@ -39,15 +39,19 @@ def _is_name_recall_query(query: str) -> bool:
 def _is_profile_intro_statement(query: str) -> bool:
     q = query.lower().strip()
     patterns = [
-        r"\bmy name is\s+[a-zA-Z]",
-        r"\bi am\s+[a-zA-Z]",
-        r"\bi'm\s+[a-zA-Z]",
-        r"\bmera naam\s+[a-zA-Z]",
+        r"\bmy name is\s+[a-zA-Z][a-zA-Z\s'-]{0,30}$",
+        r"\bi am\s+[a-zA-Z][a-zA-Z\s'-]{0,30}$",
+        r"\bi'm\s+[a-zA-Z][a-zA-Z\s'-]{0,30}$",
+        r"\bmera naam\s+[a-zA-Z][a-zA-Z\s'-]{0,30}$",
     ]
     return any(re.search(pattern, q) for pattern in patterns)
 
 
 def _extract_name_from_text(text: str) -> str | None:
+    stopwords = {
+        "talking", "about", "you", "this", "that", "here", "there", "working",
+        "doing", "trying", "asking", "saying", "from", "with", "for",
+    }
     patterns = [
         r"\bmy name is\s*([a-zA-Z][a-zA-Z\s'-]{0,40})",
         r"\bi am\s+([a-zA-Z][a-zA-Z\s'-]{0,40})",
@@ -59,7 +63,8 @@ def _extract_name_from_text(text: str) -> str | None:
         match = re.search(pattern, lowered)
         if match:
             candidate = match.group(1).strip(" .,!?")
-            if candidate:
+            words = [w for w in candidate.split() if w]
+            if words and len(words) <= 3 and not any(w in stopwords for w in words):
                 return " ".join(word.capitalize() for word in candidate.split())
     return None
 

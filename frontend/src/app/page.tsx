@@ -261,6 +261,14 @@ function extractMainPoints(text: string): string[] {
   return sentencePoints;
 }
 
+function isObjectiveQuestionPrompt(text: string): boolean {
+  const q = text.toLowerCase();
+  return (
+    /\b(true\s*\/\s*false|true or false|t\/f)\b/.test(q) ||
+    /\b(mcq|multiple choice|choose (the )?(correct|best) option|options?:\s*[a-d1-4])\b/.test(q)
+  );
+}
+
 /** Strip the "You might also want to know" suggestion section from answer text
  *  so it doesn't appear duplicated when structured suggestion chips are shown. */
 function stripSuggestionSection(text: string): string {
@@ -2711,11 +2719,17 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                         ? "bg-white/8 border border-cyan-400/30 text-white rounded-tr-md shadow-lg shadow-cyan-500/10 backdrop-blur-lg"
                         : "bg-zinc-900/60 border border-zinc-700/40 rounded-tl-md backdrop-blur-md"
                     }`}>
-                      {m.role === "assistant" && !m.streaming && m.text.length > 280 && extractMainPoints(m.text).length > 0 && (
+                      {(() => {
+                        if (!(m.role === "assistant" && !m.streaming && m.text.length > 280)) return null;
+                        const previousUserQuery = [...messages.slice(0, i)].reverse().find((item) => item.role === "user")?.text ?? "";
+                        if (!isObjectiveQuestionPrompt(previousUserQuery)) return null;
+                        const points = extractMainPoints(m.text);
+                        if (!points.length) return null;
+                        return (
                         <div className="mb-2.5 rounded-xl border border-cyan-500/25 bg-cyan-500/6 p-2.5">
                           <p className="text-[11px] font-medium text-cyan-200 mb-2 tracking-wide uppercase">Main Points</p>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {extractMainPoints(m.text).map((point, idx) => (
+                            {points.map((point, idx) => (
                               <div key={idx} className="rounded-lg border border-cyan-500/20 bg-zinc-900/65 px-2.5 py-2 text-[11px] text-zinc-200 leading-relaxed">
                                 <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-cyan-500/20 text-cyan-200 text-[10px] mr-1.5 align-middle">{idx + 1}</span>
                                 <span className="align-middle">{point}</span>
@@ -2723,7 +2737,8 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                             ))}
                           </div>
                         </div>
-                      )}
+                        );
+                      })()}
                       {m.role === "assistant" && m.text !== GREET ? (
                         <div className="prose prose-invert prose-sm max-w-none text-[14px] sm:text-[15px] leading-relaxed [&_pre]:bg-zinc-900/80 [&_pre]:border [&_pre]:border-zinc-700/30 [&_pre]:rounded-xl [&_pre]:p-3 [&_pre]:overflow-x-auto [&_code]:text-cyan-300 [&_code]:text-[13px] [&_a]:text-cyan-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-cyan-500/30 hover:[&_a]:decoration-cyan-500 [&_h1]:text-xl [&_h1]:tracking-tight [&_h2]:text-lg [&_h2]:tracking-tight [&_h3]:text-base [&_h1]:font-bold [&_h2]:font-semibold [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_li]:my-1 [&_blockquote]:border-l-2 [&_blockquote]:border-cyan-500/40 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-zinc-300 [&_table]:border-collapse [&_th]:border [&_th]:border-zinc-700 [&_th]:px-3 [&_th]:py-1.5 [&_th]:bg-zinc-800 [&_td]:border [&_td]:border-zinc-700 [&_td]:px-3 [&_td]:py-1.5 [&_hr]:border-zinc-700/50 [&_strong]:text-zinc-100 [&_strong]:font-semibold [&_strong]:bg-cyan-400/10 [&_strong]:px-1.5 [&_strong]:py-0.5 [&_strong]:rounded-md [&_li]:marker:text-cyan-300 [&_p:first-of-type]:text-zinc-100 [&_p:first-of-type]:font-medium">
                           <ReactMarkdown
