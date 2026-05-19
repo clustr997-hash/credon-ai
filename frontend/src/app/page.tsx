@@ -116,12 +116,6 @@ const API = resolveApiBase();
 const GREET =
   "Hi! I\u2019m **Credon AI** \u2014 your intelligent assistant. Ask me anything \u2014 I can search the web, solve math, analyze images, and think through complex topics. Try me!";
 
-const SUGGESTIONS = [
-  "What is quantum computing?",
-  "Solve: integrate x\u00B2 dx from 0 to 3",
-  "Explain machine learning simply",
-  "Latest AI trends in 2026",
-];
 
 function userFriendlyFcmStatus(reason?: string): string {
   const normalized = (reason || "").toLowerCase();
@@ -1442,6 +1436,8 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   ]);
   const [loading, setLoading] = useState(false);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [homeSuggestions, setHomeSuggestions] = useState<string[]>([]);
+  const [hasUserSentMessage, setHasUserSentMessage] = useState(false);
   const [currentSession, setCurrentSession] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [copied, setCopied] = useState<number | null>(null);
@@ -1510,7 +1506,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   const sessionStorageKey = `credon-active-session:${uid}`;
   const displayName = user?.displayName ?? user?.email?.split("@")[0] ?? "Guest";
   const isEmptyChat = messages.length === 1 && messages[0].text === GREET;
-  const allModesActive = !isGuest && useWeb && deepThink && codeMode;
+  const allModesActive = !isGuest && useWeb && deepThink && codeMode && hasUserSentMessage;
   const browserSupportsNativeShare = typeof window !== "undefined" && typeof navigator !== "undefined" && "share" in navigator;
 
   useEffect(() => {
@@ -1680,12 +1676,25 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     setFcmStatus(userFriendlyFcmStatus(result.error));
   };
 
+  const fetchHomeSuggestions = useCallback(async () => {
+    try {
+      const r = await fetch(`${API}/api/suggestions?user_id=${encodeURIComponent(uid)}`);
+      if (!r.ok) return;
+      const data = await r.json();
+      if (Array.isArray(data.suggestions)) setHomeSuggestions(data.suggestions.slice(0, 4));
+    } catch {}
+  }, [uid]);
+
+  useEffect(() => { void fetchHomeSuggestions(); }, [fetchHomeSuggestions, currentSession]);
+
   const newChat = () => {
     setCurrentSession(newSessionId());
     stopGeneration();
     setMobileModesOpen(false);
     setMessages([{ role: "assistant", text: GREET, timestamp: Date.now() }]);
+    setHasUserSentMessage(false);
     setSidebarOpen(false);
+    void fetchHomeSuggestions();
     inputRef.current?.focus();
   };
 
@@ -1815,7 +1824,8 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         || [...messages].reverse().find((m) => m.role === "assistant" && m.text !== GREET && !m.streaming)?.text
         || "";
       if (contextualAnswer.trim()) {
-        const userMsg: Message = {
+        setHasUserSentMessage(true);
+      const userMsg: Message = {
           role: "user",
           text: q,
           timestamp: Date.now(),
@@ -1869,6 +1879,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         setMessages((prev) => prev.slice(0, editingIndex));
         setEditingIndex(null);
       }
+      setHasUserSentMessage(true);
       const userMsg: Message = {
         role: "user", text: q, timestamp: Date.now(),
         replyTo: replyContext || undefined,
@@ -2641,7 +2652,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 Search, reason, create, and solve — powered by multi-model AI.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 w-full max-w-lg">
-                {SUGGESTIONS.map((s) => (
+                {(homeSuggestions.length ? homeSuggestions : ["What is quantum computing?", "Solve: integrate x² dx from 0 to 3", "Explain machine learning simply", "Latest AI trends in 2026"]).map((s) => (
                   <button key={s} type="button" onClick={() => send(s)}
                     className="suggestion-chip text-left rounded-xl border border-zinc-800/80 bg-zinc-900/50 px-4 py-3.5 text-sm text-zinc-300 hover:bg-zinc-800/70 hover:text-white hover:border-cyan-500/30 transition-all group">
                     <span className="group-hover:text-cyan-300 transition">{s}</span>

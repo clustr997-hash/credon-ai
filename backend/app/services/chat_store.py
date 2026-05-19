@@ -253,3 +253,12 @@ def get_transcript(user_id: str, session_id: str) -> list[dict[str, Any]]:
             print("warning: firestore transcript failed; using local store")
 
     return _get_local_transcript(user_id, session_id)
+
+
+
+def get_chat_history(user_id: str, session_id: str, limit: int = 50) -> list[dict[str, Any]]:
+    """Return recent chat history in chronological order."""
+    history = get_transcript(user_id, session_id)
+    if limit <= 0:
+        return history
+    return history[-limit:]

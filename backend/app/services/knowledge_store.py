@@ -632,3 +632,62 @@ def retrieve_knowledge_context(user_id: str, query: str, top_k: int = 4, subject
 
 
 _load_local()
+
+
+def list_user_knowledge_snippets(user_id: str, limit: int = 6) -> list[str]:
+    """Fetch short snippets from a user's stored knowledge chunks."""
+    backend_mode = _knowledge_backend_mode()
+    snippets: list[str] = []
+
+    if backend_mode in {"auto", "postgres"} and _postgres_ready() and psycopg is not None and dict_row is not None:
+        try:
+            pg = cast(Any, psycopg)
+            with pg.connect(_postgres_dsn(), connect_timeout=5) as conn:
+                with conn.cursor(row_factory=dict_row) as cur:
+                    cur.execute(
+                        """
+                        select text from public.knowledge_chunks
+                        where user_id = %s
+                        order by created_at desc
+                        limit %s
+                        """,
+                        (user_id, max(limit, 1)),
+                    )
+                    rows = cur.fetchall()
+            for row in cast(list[Any], rows):
+                if isinstance(row, dict) and isinstance(row.get("text"), str):
+                    snippets.append(cast(str, row["text"]))
+            if snippets:
+                return snippets
+        except Exception:
+            pass
+
+    client = _firebase_client()
+    if client and backend_mode in {"auto", "firestore"}:
+        try:
+            docs = (
+                client.collection("users")
+                .document(user_id)
+                .collection("knowledge_chunks")
+                .order_by("created_at", direction=firestore.Query.DESCENDING)
+                .limit(max(limit, 1))
+                .stream()
+            )
+            for doc in docs:
+                data = cast(dict[str, Any], doc.to_dict() or {})
+                text = data.get("text")
+                if isinstance(text, str) and text.strip():
+                    snippets.append(text)
+            if snippets:
+                return snippets
+        except Exception:
+            pass
+
+    with _STORE_LOCK:
+        for row in reversed(_LOCAL_CHUNKS):
+            if row.get("user_id") == user_id and isinstance(row.get("text"), str):
+                snippets.append(cast(str, row["text"]))
+                if len(snippets) >= max(limit, 1):
+                    break
+
+    return snippets
