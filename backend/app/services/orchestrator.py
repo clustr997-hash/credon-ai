@@ -19,6 +19,7 @@ from __future__ import annotations
 import concurrent.futures
 import re
 import time
+from enum import Enum
 from typing import Any, Generator
 
 from app.services.models import (
@@ -127,6 +128,35 @@ def _post_evaluate(
     return answer, True
 
 
+# ── Intent routing ───────────────────────────────────────────────
+
+class IntentType(str, Enum):
+    GENERAL_CHAT = "GENERAL_CHAT"
+    CODING_TASK = "CODING_TASK"
+    FACTUAL_KNOWLEDGE = "FACTUAL_KNOWLEDGE"
+    MATH_QUESTION = "MATH_QUESTION"
+
+
+def _classify_intent(query: str) -> IntentType:
+    q = query.strip().lower()
+    if re.fullmatch(r"(hi|hello|hey|who are you|what are you|good morning|good evening)[!.? ]*", q):
+        return IntentType.GENERAL_CHAT
+    if re.search(r"\b(solve|calculate|integrate|differentiate|equation|algebra|derivative|probability|mean|median|matrix|\d+\s*[+\-*/]\s*\d+)\b", q):
+        return IntentType.MATH_QUESTION
+    if re.search(r"\b(code|debug|bug|fix|python|javascript|java|c\+\+|typescript|sql|function|api|compile|refactor)\b", q):
+        return IntentType.CODING_TASK
+    if re.search(r"\b(latest|news|trend|what is|explain|compare|research|source|evidence|history|facts?)\b", q):
+        return IntentType.FACTUAL_KNOWLEDGE
+    return IntentType.GENERAL_CHAT
+
+
+def _general_chat_reply(query: str) -> str:
+    q = query.lower()
+    if "who are you" in q or "what are you" in q:
+        return "Hey! I’m Credon AI, your assistant for chat, research, coding help, and problem solving. What do you want to explore today?"
+    return "Hey there! 👋 I’m Credon AI. How can I help you today?"
+
+
 # ── Public orchestration API ─────────────────────────────────────
 
 
@@ -141,6 +171,10 @@ def orchestrate_sync(
     If only one model available, falls back to single-model generation.
     Always returns a non-empty answer.
     """
+    intent = _classify_intent(query)
+    if intent == IntentType.GENERAL_CHAT:
+        return _general_chat_reply(query)
+
     chosen = model_hint or default_model()
     candidates = cloud_retry_candidates(chosen)
 

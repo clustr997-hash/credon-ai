@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
@@ -8,6 +8,8 @@ import requests
 from app.routes.chat import router as chat_router
 from app.routes.ingest import router as ingest_router
 from app.routes.generate import router as generate_router
+from app.services.knowledge_store import list_user_knowledge_snippets
+from app.services.models import generate_sync
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
@@ -198,3 +200,36 @@ def health_providers() -> dict[str, object]:
         "checks": checks,
         "ready_providers": ready_count,
     }
+
+
+@app.get("/api/suggestions", tags=["System"])
+def api_suggestions(user_id: str = Query(..., min_length=1)) -> dict[str, list[str]]:
+    snippets = list_user_knowledge_snippets(user_id=user_id, limit=6)
+    if snippets:
+        prompt = (
+            "Generate 4 short, distinct user questions based on these notes. "
+            "Return each as a plain line without numbering.\n\n" + "\n".join(snippets[:6])
+        )
+    else:
+        prompt = (
+            'Provide 4 unique, curiosity-driven, trending topics in India or worldwide for 2026 as question prompts. '
+            'Return only 4 lines, no numbering.'
+        )
+
+    text = generate_sync([{"role": "user", "content": prompt}])
+    lines = [ln.strip("-• 	") for ln in text.splitlines() if ln.strip()]
+    cleaned: list[str] = []
+    for ln in lines:
+        item = ln.split('.', 1)[-1].strip() if re.match(r"^\d+[.)]", ln) else ln
+        if item and item not in cleaned:
+            cleaned.append(item)
+        if len(cleaned) >= 4:
+            break
+    if not cleaned:
+        cleaned = [
+            "What major AI breakthroughs are expected in 2026?",
+            "How is climate tech evolving worldwide this year?",
+            "What are India’s fastest-growing startup sectors in 2026?",
+            "Which global trends will shape jobs over the next 5 years?",
+        ]
+    return {"suggestions": cleaned[:4]}
