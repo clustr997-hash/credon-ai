@@ -46,6 +46,35 @@ def _postgres_ready() -> bool:
     return bool(psycopg is not None and _postgres_dsn())
 
 
+def postgres_health() -> dict[str, Any]:
+    """Return Supabase/Postgres readiness without raising.
+
+    Checks the configured DSN, pgvector extension, and the knowledge_chunks table
+    used by Credon's retrieval store.
+    """
+    if psycopg is None:
+        return {"configured": False, "ok": False, "error": "psycopg_not_installed"}
+    if not _postgres_dsn():
+        return {"configured": False, "ok": False, "error": "missing_SUPABASE_DB_URL"}
+    try:
+        pg = cast(Any, psycopg)
+        with pg.connect(_postgres_dsn(), connect_timeout=5) as conn:
+            with conn.cursor() as cur:
+                cur.execute("select 1")
+                cur.execute("select to_regclass('public.knowledge_chunks')")
+                table_exists = cur.fetchone()[0] is not None
+                cur.execute("select exists(select 1 from pg_extension where extname = 'vector')")
+                vector_enabled = bool(cur.fetchone()[0])
+        return {
+            "configured": True,
+            "ok": bool(table_exists and vector_enabled),
+            "table_exists": table_exists,
+            "pgvector_enabled": vector_enabled,
+            "error": "" if table_exists and vector_enabled else "run_backend/scripts/setup_supabase_pgvector.sql",
+        }
+    except Exception as exc:
+        return {"configured": True, "ok": False, "error": str(exc)}
+
 def _embedding_literal(embedding: list[float]) -> str:
     # pgvector text literal format: [0.1,0.2,...]
     return "[" + ",".join(f"{float(v):.8f}" for v in embedding) + "]"
