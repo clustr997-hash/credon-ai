@@ -116,6 +116,30 @@ const API = resolveApiBase();
 const GREET =
   "Hi! I\u2019m **Credon AI** \u2014 your intelligent assistant. Ask me anything \u2014 I can search the web, solve math, analyze images, and think through complex topics. Try me!";
 
+const LOCAL_TRENDING_PROMPTS = [
+  "What are the biggest AI trends to watch this week?",
+  "Explain AI agents in simple words",
+  "How is generative AI changing jobs in 2026?",
+  "What should students learn for future tech careers?",
+  "What is quantum computing and why does it matter?",
+  "How does machine learning power recommendation apps?",
+  "What are the latest cybersecurity risks with AI?",
+  "Explain climate tech trends simply",
+  "How can I use AI tools for studying ethically?",
+  "What is multimodal AI?",
+  "What are the most useful coding skills right now?",
+  "Explain space technology breakthroughs in simple words",
+];
+
+function randomLocalPrompts(count = 4): string[] {
+  const pool = [...LOCAL_TRENDING_PROMPTS];
+  for (let i = pool.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, count);
+}
+
 
 function userFriendlyFcmStatus(reason?: string): string {
   const normalized = (reason || "").toLowerCase();
@@ -1190,7 +1214,7 @@ function AuthPage({ onGuest }: { onGuest: () => void }) {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!firebaseAuth) { setErr("Authentication is not configured yet. Please continue as guest."); return; }
+    if (!firebaseAuth) { onGuest(); return; }
     setBusy(true); setErr(""); setOk("");
     try {
       if (tab === "forgot") { await sendPasswordResetEmail(firebaseAuth, email.trim()); setOk("Reset link sent! Check your inbox."); }
@@ -1207,7 +1231,7 @@ function AuthPage({ onGuest }: { onGuest: () => void }) {
   };
 
   const google = async () => {
-    if (!firebaseAuth) { setErr("Authentication is not configured yet. Please continue as guest."); return; }
+    if (!firebaseAuth) { onGuest(); return; }
     setBusy(true); setErr("");
     try { await signInWithPopup(firebaseAuth, new GoogleAuthProvider()); }
     catch (x: unknown) { setErr(cleanFirebaseError(x instanceof Error ? x.message : "Google sign-in failed")); }
@@ -1227,8 +1251,8 @@ function AuthPage({ onGuest }: { onGuest: () => void }) {
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 backdrop-blur-xl p-6 shadow-2xl">
           {noFirebase && (
             <div className="mb-4 rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-3">
-              <p className="text-sm text-amber-300 font-medium">Authentication not configured</p>
-              <p className="text-xs text-amber-400/70 mt-0.5">Firebase keys are not set up. You can still use Credon AI as a guest.</p>
+              <p className="text-sm text-amber-300 font-medium">Guest mode is ready</p>
+              <p className="text-xs text-amber-400/70 mt-0.5">Sign-in is unavailable in this local run, so Credon AI will continue as guest.</p>
             </div>
           )}
           {tab !== "forgot" ? (
@@ -1436,7 +1460,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   ]);
   const [loading, setLoading] = useState(false);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [homeSuggestions, setHomeSuggestions] = useState<string[]>([]);
+  const [homeSuggestions, setHomeSuggestions] = useState<string[]>(() => randomLocalPrompts());
   const [hasUserSentMessage, setHasUserSentMessage] = useState(false);
   const [currentSession, setCurrentSession] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -1510,9 +1534,9 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   const browserSupportsNativeShare = typeof window !== "undefined" && typeof navigator !== "undefined" && "share" in navigator;
 
   useEffect(() => {
-    // Force guest mode to start in lightweight settings.
+    // Guests should still get the resilient answer pipeline: Credon Brain → local model → DuckDuckGo web fallback.
+    // Keep expensive reasoning/code features signed-in only, but do not disable web search for guests.
     if (isGuest) {
-      setUseWeb(false);
       setDeepThink(false);
       setCodeMode(false);
       if (typeof window !== "undefined") {
@@ -1678,11 +1702,15 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
 
   const fetchHomeSuggestions = useCallback(async () => {
     try {
-      const r = await fetch(`${API}/api/suggestions?user_id=${encodeURIComponent(uid)}`);
+      const r = await fetch(`${API}/api/suggestions?user_id=${encodeURIComponent(uid)}&t=${Date.now()}`, {
+        cache: "no-store",
+      });
       if (!r.ok) return;
       const data = await r.json();
       if (Array.isArray(data.suggestions)) setHomeSuggestions(data.suggestions.slice(0, 4));
-    } catch {}
+    } catch {
+      setHomeSuggestions(randomLocalPrompts());
+    }
   }, [uid]);
 
   useEffect(() => { void fetchHomeSuggestions(); }, [fetchHomeSuggestions, currentSession]);
@@ -1691,6 +1719,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     setCurrentSession(newSessionId());
     stopGeneration();
     setMobileModesOpen(false);
+    setHomeSuggestions(randomLocalPrompts());
     setMessages([{ role: "assistant", text: GREET, timestamp: Date.now() }]);
     setHasUserSentMessage(false);
     setSidebarOpen(false);
@@ -2197,7 +2226,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         // Final fallback: show a helpful message
         setMessages((prev) => [...prev, {
           role: "assistant" as const,
-          text: "I retried this request across available engines, but the connection is temporarily unstable. Please send it once again and I will continue from here.",
+          text: "I retried with Credon Brain, local model fallback, and DuckDuckGo-backed web search, but the connection is temporarily unstable. Please send it once again and I will continue from here.",
           confidence: "low",
           timestamp: Date.now(),
           suggestions: ["Try my question again", "Rephrase this request", "Start a fresh chat"],
@@ -2652,7 +2681,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 Search, reason, create, and solve — powered by multi-model AI.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 w-full max-w-lg">
-                {(homeSuggestions.length ? homeSuggestions : ["What is quantum computing?", "Solve: integrate x² dx from 0 to 3", "Explain machine learning simply", "Latest AI trends in 2026"]).map((s) => (
+                {homeSuggestions.map((s) => (
                   <button key={s} type="button" onClick={() => send(s)}
                     className="suggestion-chip text-left rounded-xl border border-zinc-800/80 bg-zinc-900/50 px-4 py-3.5 text-sm text-zinc-300 hover:bg-zinc-800/70 hover:text-white hover:border-cyan-500/30 transition-all group">
                     <span className="group-hover:text-cyan-300 transition">{s}</span>
@@ -3380,6 +3409,19 @@ export default function Home() {
           }}
         />
       </>
+    );
+  }
+
+  if (!user && !guest && !firebaseAuth) {
+    return (
+      <ChatPage
+        user={null}
+        isGuest
+        onSignOut={async () => {
+          setGuest(false);
+          setShowLanding(true);
+        }}
+      />
     );
   }
 

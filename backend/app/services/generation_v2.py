@@ -150,7 +150,17 @@ def _fallback_answer(
     if sources and len(sources) >= 2:
         return credon_answer(query, sources=sources, target_language=target_language) or _basic_synthesis(query, sources, target_language)
 
-    # PRIORITY 3: Graceful response when strong context is unavailable
+    # PRIORITY 3: If Credon/local generation has no strong context, search DuckDuckGo and synthesize.
+    try:
+        from .retrieval_v2 import retrieve_sources
+
+        web_sources = retrieve_sources(query, max_results=4)
+    except Exception:
+        web_sources = []
+    if web_sources:
+        return credon_answer(query, sources=web_sources, target_language=target_language) or _basic_synthesis(query, web_sources, target_language)
+
+    # PRIORITY 4: Graceful response when strong context is unavailable
     if target_language == "hinglish":
         return (
             f"**'{query}'** ke baare mein:\n\n"

@@ -287,7 +287,36 @@ def _fallback_builtin_answer(messages: list[dict[str, str]]) -> str:
         if brain_with_sources:
             return brain_with_sources
 
-    # 3. Honest fallback — NEVER says "building understanding" / "try enabling web search" / "continuously learning"
+    # 3. DuckDuckGo web fallback when local/cloud generation and Credon Brain do not have enough context.
+    try:
+        from .retrieval_v2 import retrieve_sources
+
+        web_sources = retrieve_sources(question, max_results=4)
+    except Exception:
+        web_sources = []
+    if web_sources:
+        brain_with_web = credon_answer(question, sources=web_sources)
+        if brain_with_web:
+            return brain_with_web
+        source_points = "\n".join(
+            f"- **{src.get('title') or 'Source'}**: {(src.get('snippet') or '').strip()[:220]}"
+            for src in web_sources[:3]
+            if (src.get('snippet') or '').strip()
+        )
+        if source_points:
+            source_links = "\n".join(
+                f"- [{src.get('title') or 'Source'}]({src.get('url')})"
+                for src in web_sources[:3]
+                if src.get('url')
+            )
+            return (
+                f"**{question}**\n\n"
+                "I found relevant web context and summarized the strongest points below:\n\n"
+                f"{source_points}\n\n"
+                f"**Sources:**\n{source_links}"
+            )
+
+    # 4. Honest fallback — NEVER says "building understanding" / "try enabling web search" / "continuously learning"
     return (
         f"**{question}**\n\n"
         f"I wasn't able to find a strong answer for this right now. "

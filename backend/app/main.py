@@ -4,12 +4,16 @@ from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
 from pathlib import Path
 import os
+import random
+import re
+from time import time
 import requests
 from app.routes.chat import router as chat_router
 from app.routes.ingest import router as ingest_router
 from app.routes.generate import router as generate_router
-from app.services.knowledge_store import list_user_knowledge_snippets
+from app.services.knowledge_store import list_user_knowledge_snippets, postgres_health
 from app.services.models import generate_sync
+from app.services.retrieval_v2 import retrieve_sources
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
@@ -182,6 +186,7 @@ def health_providers() -> dict[str, object]:
         "serper": _provider_check_serper(),
         "langsearch": _provider_check_langsearch(),
         "ollama": _provider_check_ollama(),
+        "supabase": postgres_health(),
     }
     ready_count = sum(1 for item in checks.values() if bool(item.get("ok")))
     return {
@@ -202,34 +207,89 @@ def health_providers() -> dict[str, object]:
     }
 
 
+_SUGGESTIONS_CACHE_TTL_SEC = 600.0
+_SUGGESTIONS_CACHE: dict[str, tuple[float, list[str]]] = {}
+
+_FALLBACK_TRENDING_PROMPTS = [
+    "What are the biggest AI trends to watch in 2026?",
+    "How are AI agents changing everyday work?",
+    "What is quantum computing and why does it matter now?",
+    "Which skills will be most valuable for tech jobs in 2026?",
+    "How is climate tech evolving worldwide this year?",
+    "What are India’s fastest-growing startup sectors in 2026?",
+    "How can students use AI tools without cheating?",
+    "What is multimodal AI in simple words?",
+    "How are robots and AI being used in healthcare?",
+    "What cybersecurity risks are rising with generative AI?",
+    "How does machine learning power recommendation systems?",
+    "What are the latest breakthroughs in space technology?",
+]
+
+
+def _clean_suggestion_line(line: str) -> str:
+    item = re.sub(r"^\s*(?:[-•*]|\d+[.)])\s*", "", line).strip().strip('"')
+    item = re.sub(r"\s+", " ", item)
+    return item[:110].rstrip(" .")
+
+
+def _question_from_source(title: str, snippet: str) -> str:
+    text = _clean_suggestion_line(title or snippet)
+    text = re.sub(r"\s*[-|–—].*$", "", text).strip()
+    text = re.sub(r"\b(live updates?|breaking|explained)\b", "", text, flags=re.I).strip(" :-")
+    if not text:
+        return "What are people talking about in tech today?"
+    if text.endswith("?"):
+        return text
+    lowered = text.lower()
+    if any(word in lowered for word in ["trend", "trends", "future", "forecast", "report"]):
+        return f"What should I know about {text}?"
+    return f"Explain {text} simply"
+
+
+def _trending_web_prompts() -> list[str]:
+    cache_key = "global_trending_prompts"
+    cached = _SUGGESTIONS_CACHE.get(cache_key)
+    now = time()
+    if cached and now - cached[0] < _SUGGESTIONS_CACHE_TTL_SEC:
+        return list(cached[1])
+
+    queries = [
+        "2026 trending technology AI science startup topics India worldwide",
+        "latest AI technology trends 2026 students developers business",
+    ]
+    prompts: list[str] = []
+    for query in queries:
+        try:
+            for src in retrieve_sources(query, max_results=8):
+                prompt = _question_from_source(str(src.get("title") or ""), str(src.get("snippet") or ""))
+                if 18 <= len(prompt) <= 120 and prompt not in prompts:
+                    prompts.append(prompt)
+        except Exception:
+            continue
+
+    prompts.extend(p for p in _FALLBACK_TRENDING_PROMPTS if p not in prompts)
+    _SUGGESTIONS_CACHE[cache_key] = (now, prompts[:24])
+    return prompts[:24]
+
+
 @app.get("/api/suggestions", tags=["System"])
 def api_suggestions(user_id: str = Query(..., min_length=1)) -> dict[str, list[str]]:
     snippets = list_user_knowledge_snippets(user_id=user_id, limit=6)
+    cleaned: list[str] = []
+
     if snippets:
         prompt = (
-            "Generate 4 short, distinct user questions based on these notes. "
+            "Generate 8 short, distinct user questions based on these notes. "
             "Return each as a plain line without numbering.\n\n" + "\n".join(snippets[:6])
         )
-    else:
-        prompt = (
-            'Provide 4 unique, curiosity-driven, trending topics in India or worldwide for 2026 as question prompts. '
-            'Return only 4 lines, no numbering.'
-        )
+        text = generate_sync([{"role": "user", "content": prompt}])
+        for line in text.splitlines():
+            item = _clean_suggestion_line(line)
+            if item and item not in cleaned:
+                cleaned.append(item)
 
-    text = generate_sync([{"role": "user", "content": prompt}])
-    lines = [ln.strip("-• 	") for ln in text.splitlines() if ln.strip()]
-    cleaned: list[str] = []
-    for ln in lines:
-        item = ln.split('.', 1)[-1].strip() if re.match(r"^\d+[.)]", ln) else ln
-        if item and item not in cleaned:
-            cleaned.append(item)
-        if len(cleaned) >= 4:
-            break
-    if not cleaned:
-        cleaned = [
-            "What major AI breakthroughs are expected in 2026?",
-            "How is climate tech evolving worldwide this year?",
-            "What are India’s fastest-growing startup sectors in 2026?",
-            "Which global trends will shape jobs over the next 5 years?",
-        ]
-    return {"suggestions": cleaned[:4]}
+    if len(cleaned) < 8:
+        cleaned.extend(p for p in _trending_web_prompts() if p not in cleaned)
+
+    selected = cleaned[:4] if len(cleaned) <= 4 else random.sample(cleaned, k=4)
+    return {"suggestions": selected}
