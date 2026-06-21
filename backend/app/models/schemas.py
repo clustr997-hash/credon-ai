@@ -13,6 +13,8 @@ class ChatRequest(BaseModel):
     code_mode: bool = False
     regenerate_of: int | None = None
     reply_to: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 class Source(BaseModel):

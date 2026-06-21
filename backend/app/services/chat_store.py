@@ -262,3 +262,33 @@ def get_chat_history(user_id: str, session_id: str, limit: int = 50) -> list[dic
     if limit <= 0:
         return history
     return history[-limit:]
+
+
+def rename_session(user_id: str, session_id: str, preview: str) -> None:
+    client = _firebase_client()
+    if client:
+        try:
+            client.collection("users").document(user_id).collection("sessions").document(session_id).set({"preview": preview, "last_updated": _now_iso()}, merge=True)
+            return
+        except Exception:
+            print("warning: firestore rename failed; using local store")
+    with _STORE_LOCK:
+        _SESSION_META.setdefault(user_id, {})[session_id] = preview
+        _persist_local_store()
+
+
+def delete_session(user_id: str, session_id: str) -> None:
+    client = _firebase_client()
+    if client:
+        try:
+            session_ref = client.collection("users").document(user_id).collection("sessions").document(session_id)
+            for doc in session_ref.collection("messages").limit(500).stream():
+                doc.reference.delete()
+            session_ref.delete()
+            return
+        except Exception:
+            print("warning: firestore delete failed; using local store")
+    with _STORE_LOCK:
+        _LOCAL_STORE.get(user_id, {}).pop(session_id, None)
+        _SESSION_META.get(user_id, {}).pop(session_id, None)
+        _persist_local_store()

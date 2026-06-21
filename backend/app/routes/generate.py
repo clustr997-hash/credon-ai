@@ -356,13 +356,19 @@ async def export_chat_pdf(body: ChatPdfRequest):
     """Export a full chat session transcript as one PDF."""
     transcript = get_transcript(body.user_id, body.session_id)
     lines: list[str] = []
+    pending_question = ""
     for item in transcript:
-        role = str(item.get("role", "assistant")).upper()
+        role = str(item.get("role", "assistant")).lower()
         text = str(item.get("text", "")).strip()
         if not text:
             continue
-        lines.append(f"{role}:\n{text}\n")
-    content = "\n".join(lines) if lines else "No chat messages available in this session."
+        if role == "user":
+            pending_question = text
+            continue
+        question = pending_question or "Previous prompt"
+        lines.append(f"Question\n{question}\n\nAnswer\n{text}\n")
+        pending_question = ""
+    content = "\n---\n".join(lines) if lines else "No question/answer messages available in this session."
 
     pdf_bytes = generate_notes_pdf(
         title=f"Credon Chat - {body.session_id}",
@@ -389,11 +395,17 @@ async def export_all_chats_pdf(body: AllChatsPdfRequest):
         if not transcript:
             continue
         blocks.append(f"## Session: {session_id}")
+        pending_question = ""
         for item in transcript:
-            role = str(item.get("role", "assistant")).upper()
+            role = str(item.get("role", "assistant")).lower()
             text = str(item.get("text", "")).strip()
-            if text:
-                blocks.append(f"{role}: {text}")
+            if not text:
+                continue
+            if role == "user":
+                pending_question = text
+                continue
+            blocks.append(f"Question\n{pending_question or 'Previous prompt'}\n\nAnswer\n{text}")
+            pending_question = ""
         blocks.append("")
 
     content = "\n".join(blocks) if blocks else "No chat messages available."
