@@ -410,9 +410,9 @@ function CredonLogo({ size = 32, animate = false, className = "" }: { size?: num
 
 function ProgressDots({ stage }: { stage: ThinkingStage }) {
   const labels: Record<string, string> = {
-    searching: "Searching the web",
-    evaluating: "Analyzing sources",
-    composing: "Writing response",
+    searching: "Searching web… reading sources",
+    evaluating: "Evaluating evidence and route",
+    composing: "Writing structured answer",
   };
 
   return (
@@ -680,8 +680,9 @@ function ImageGrid({ images }: { images: ImageResult[] }) {
               unoptimized
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
             />
-            <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/80 to-transparent p-2">
+            <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/85 to-transparent p-2">
               <p className="text-[10px] text-white truncate">{img.title}</p>
+              <p className="text-[9px] text-cyan-100/80 truncate">{getDomain(img.source_url)}</p>
             </div>
           </button>
         ))}
@@ -703,7 +704,14 @@ function ImageGrid({ images }: { images: ImageResult[] }) {
                 <path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
-            {selected.title && <p className="text-sm text-zinc-300 mt-2 text-center">{selected.title}</p>}
+            <div className="mt-2 rounded-2xl border border-zinc-800/80 bg-zinc-950/80 p-3 text-center">
+              {selected.title && <p className="text-sm text-zinc-200">{selected.title}</p>}
+              <p className="mt-1 text-xs text-zinc-500">Source: {getDomain(selected.source_url)}</p>
+              <div className="mt-3 flex justify-center gap-2">
+                <a href={selected.source_url} target="_blank" rel="noreferrer" className="rounded-xl border border-zinc-700/70 px-3 py-2 text-xs text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200">Open source</a>
+                <a href={selected.image_url} target="_blank" rel="noreferrer" download className="rounded-xl bg-cyan-500 px-3 py-2 text-xs font-semibold text-black hover:bg-cyan-300">Save image</a>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -773,6 +781,9 @@ function TtsPanel({
   onSeek,
   onRate,
   onVoiceLang,
+  muted,
+  onMuted,
+  onClose,
 }: {
   sentences: string[];
   activeSentence: number;
@@ -786,6 +797,9 @@ function TtsPanel({
   onSeek: (index: number) => void;
   onRate: (rate: number) => void;
   onVoiceLang: (lang: string) => void;
+  muted: boolean;
+  onMuted: (muted: boolean) => void;
+  onClose: () => void;
 }) {
   const progress = sentences.length ? Math.round(((activeSentence + 1) / sentences.length) * 100) : 0;
   const voiceOptions = [
@@ -797,11 +811,19 @@ function TtsPanel({
   ];
   return (
     <div className="mt-3 rounded-2xl border border-cyan-400/20 bg-cyan-500/7 p-3 shadow-lg shadow-cyan-950/15">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div>
+          <p className="text-xs font-semibold text-cyan-100">Read aloud</p>
+          <p className="text-[10px] text-zinc-500">Voice follows selected language and remembers sound preference.</p>
+        </div>
+        <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-800/70 hover:text-zinc-200" title="Collapse read aloud">Collapse ▲</button>
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <select value={voiceLang} onChange={(e) => onVoiceLang(e.target.value)} className="min-h-10 rounded-xl border border-zinc-700/60 bg-zinc-950/70 px-2 text-xs text-zinc-200" title="Voice language">
           {voiceOptions.map((option) => <option key={`${option.label}-${option.value}`} value={option.value}>{option.label}</option>)}
         </select>
-        <button type="button" onClick={onPlay} className="min-h-10 rounded-xl bg-cyan-500 px-3 text-xs font-semibold text-black">Play</button>
+        <button type="button" onClick={() => onMuted(!muted)} className={`min-h-10 rounded-xl border px-3 text-xs font-semibold ${muted ? "border-amber-500/40 bg-amber-500/10 text-amber-200" : "border-zinc-700/60 text-zinc-200"}`}>{muted ? "Sound OFF" : "Sound ON"}</button>
+        <button type="button" onClick={onPlay} disabled={muted} className="min-h-10 rounded-xl bg-cyan-500 px-3 text-xs font-semibold text-black disabled:opacity-40">Play</button>
         <button type="button" onClick={paused ? onResume : onPause} className="min-h-10 rounded-xl border border-zinc-700/60 px-3 text-xs text-zinc-200">{paused ? "Resume" : "Pause"}</button>
         <button type="button" onClick={onStop} className="min-h-10 rounded-xl border border-zinc-700/60 px-3 text-xs text-zinc-200">Stop</button>
         <select value={rate} onChange={(e) => onRate(Number(e.target.value))} className="ml-auto min-h-10 rounded-xl border border-zinc-700/60 bg-zinc-950/70 px-2 text-xs text-zinc-200" title="Speech speed">
@@ -1747,6 +1769,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   const [ttsPaused, setTtsPaused] = useState(false);
   const [ttsRate, setTtsRate] = useState(1);
   const [ttsVoiceLang, setTtsVoiceLang] = useState("en-US");
+  const [ttsMuted, setTtsMuted] = useState(() => typeof window !== "undefined" && localStorage.getItem("credon-tts-muted") === "1");
   const [inputMenuOpen, setInputMenuOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
   const [connectionNotice, setConnectionNotice] = useState<string | null>(null);
@@ -1914,6 +1937,11 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       window.removeEventListener("offline", updateOnlineState);
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") localStorage.setItem("credon-tts-muted", ttsMuted ? "1" : "0");
+    if (ttsMuted) stopTts();
+  }, [ttsMuted]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2655,6 +2683,10 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   };
 
   const speakAnswer = (idx: number, text: string) => {
+    if (ttsMuted) {
+      setTtsPanelIndex((prev) => prev === idx ? null : idx);
+      return;
+    }
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
     const sentences = splitSentences(text);
     if (!sentences.length) return;
@@ -2745,8 +2777,9 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   };
 
   const shareAssistantMessage = async (index: number, message: Message) => {
-    const payloadText = stripSuggestionSection(message.text).trim();
-    if (!payloadText) return;
+    const answerText = stripSuggestionSection(message.text).trim();
+    const payloadText = `Credon AI\n\nAnswer preview:\n${answerText}\n\nGenerated by Credon AI`;
+    if (!answerText) return;
 
     try {
       if (browserSupportsNativeShare) {
@@ -2769,8 +2802,9 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   };
 
   const shareAssistantToChannel = async (channel: "native" | "copy" | "whatsapp" | "email" | "sms", index: number, message: Message) => {
-    const payloadText = stripSuggestionSection(message.text).trim();
-    if (!payloadText) return;
+    const answerText = stripSuggestionSection(message.text).trim();
+    const payloadText = `Credon AI\n\nAnswer preview:\n${answerText}\n\nGenerated by Credon AI`;
+    if (!answerText) return;
     const encoded = encodeURIComponent(payloadText);
 
     if (channel === "native") {
@@ -3501,7 +3535,10 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                         onStop={stopTts}
                         onSeek={(sentenceIndex) => seekTts(i, sentenceIndex)}
                         onRate={(rate) => { setTtsRate(rate); if (speakingIndex === i) seekTts(i, ttsSentenceIndex); }}
-                        onVoiceLang={(lang) => { setTtsVoiceLang(lang); if (speakingIndex === i) seekTts(i, ttsSentenceIndex); }}
+                        onVoiceLang={(lang) => { setTtsVoiceLang(lang); if (speakingIndex === i && !ttsMuted) seekTts(i, ttsSentenceIndex); }}
+                        muted={ttsMuted}
+                        onMuted={setTtsMuted}
+                        onClose={() => setTtsPanelIndex(null)}
                       />
                     )}
                   </div>
