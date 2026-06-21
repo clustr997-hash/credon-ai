@@ -170,7 +170,86 @@ const LOCAL_TRENDING_PROMPTS = [
   "Explain space technology breakthroughs in simple words",
 ];
 
-const QUICK_ACTIONS = ["Research", "Summarize", "Explain", "Compare", "Create Table", "Create Chart"] as const;
+const PRODUCT_MODES = ["Student", "Developer", "Founder", "Researcher", "Business"] as const;
+const ANSWER_STYLES = ["Simple", "Balanced", "Expert", "Research Paper"] as const;
+const PERSONALITIES = ["Professional", "Teacher", "Researcher", "Creative", "Founder advisor"] as const;
+const WELCOME_ACTIONS = [
+  { label: "Research", prompt: "Research the most important recent developments in AI and summarize them with sources." },
+  { label: "Learn", prompt: "Teach me a difficult concept in simple steps with examples." },
+  { label: "Build", prompt: "Help me build a practical project plan for an AI product." },
+  { label: "Analyze", prompt: "Analyze this idea and give pros, risks, and next steps." },
+  { label: "Create", prompt: "Help me create a polished draft, plan, or concept." },
+] as const;
+type ProductMode = typeof PRODUCT_MODES[number];
+type AnswerStyle = typeof ANSWER_STYLES[number];
+type Personality = typeof PERSONALITIES[number];
+
+
+function inferIntentLabel(text: string, message?: Message): string {
+  const q = text.toLowerCase();
+  if (message?.images?.length || /\b(show|image|photo|picture|visual)\b/.test(q)) return "Vision / image mode selected";
+  if (message?.sources?.length || /\b(latest|today|current|news|source|research|web)\b/.test(q)) return "Research mode selected";
+  if (/```|\b(code|debug|function|typescript|python|react|api|error)\b/.test(q)) return "Coding mode selected";
+  if (/\b(compare|versus| vs |difference|table)\b/.test(q)) return "Comparison mode selected";
+  if (/\b(step|plan|how to|checklist|guide)\b/.test(q)) return "Step-by-step mode selected";
+  if (/\b(create|write|draft|idea|story|caption)\b/.test(q)) return "Creative mode selected";
+  return "Balanced answer mode selected";
+}
+
+function contextBadges(message: Message): string[] {
+  const badges: string[] = [];
+  if (message.replyTo || message.metadata?.agent_plan?.mode?.memory) badges.push("Previous conversation");
+  if (message.attachments?.length || message.metadata?.agent_plan?.mode?.file_extraction) badges.push("Uploaded files");
+  if (message.metadata?.agent_plan?.mode?.web || (message.sources?.length ?? 0) > 0) badges.push("Web sources");
+  if (message.metadata?.agent_plan?.intent) badges.push("Current topic");
+  return badges.slice(0, 3);
+}
+
+
+function inferResponseLayout(query: string, message: Message): "comparison" | "timeline" | "chart" | "checklist" | "code" | "research" | "cards" | null {
+  const q = query.toLowerCase();
+  const text = message.text.toLowerCase();
+  if (/\b(compare|versus| vs |difference)\b/.test(q) || /\|.+\|/.test(message.text)) return "comparison";
+  if (/\b(timeline|history|roadmap|schedule|milestone)\b/.test(q)) return "timeline";
+  if (message.metadata?.chart?.values?.length || /\b(chart|graph|data|metrics|statistics|trend)\b/.test(q)) return "chart";
+  if (/```/.test(message.text) || /\b(code|debug|function|component|api)\b/.test(q)) return "code";
+  if (/\b(steps|checklist|how to|plan|guide)\b/.test(q) || /\b(step 1|step-by-step)\b/.test(text)) return "checklist";
+  if ((message.sources?.length ?? 0) > 0 || /\b(research|sources|latest|current|news)\b/.test(q)) return "research";
+  if (message.text.length > 500) return "cards";
+  return null;
+}
+
+function SmartLayoutPreview({ query, message }: { query: string; message: Message }) {
+  const layout = inferResponseLayout(query, message);
+  if (!layout) return null;
+  const points = extractMainPoints(message.text);
+  const labelMap: Record<NonNullable<ReturnType<typeof inferResponseLayout>>, string> = {
+    comparison: "Comparison table detected",
+    timeline: "Timeline layout detected",
+    chart: "Data / chart layout detected",
+    checklist: "Checklist layout detected",
+    code: "Code workspace detected",
+    research: "Research report detected",
+    cards: "Visual summary cards detected",
+  };
+  return (
+    <div className="mb-3 rounded-2xl border border-cyan-400/15 bg-cyan-500/6 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-200">AI layout engine</p>
+        <span className="rounded-full border border-zinc-700/70 px-2 py-0.5 text-[10px] text-zinc-400">{labelMap[layout]}</span>
+      </div>
+      {layout === "checklist" ? (
+        <div className="grid gap-1.5">{(points.length ? points : ["Understand the goal", "Work through the best route", "Verify the final answer"]).slice(0, 3).map((point, idx) => <div key={idx} className="flex items-start gap-2 rounded-xl bg-zinc-950/45 px-2.5 py-2 text-xs text-zinc-300"><span className="mt-0.5 h-4 w-4 rounded border border-cyan-400/40 text-center text-[10px] text-cyan-200">✓</span><span>{point}</span></div>)}</div>
+      ) : layout === "timeline" ? (
+        <div className="space-y-1.5">{(points.length ? points : ["Start", "Key development", "Next step"]).slice(0, 3).map((point, idx) => <div key={idx} className="flex gap-2 text-xs text-zinc-300"><span className="mt-1 h-2 w-2 rounded-full bg-cyan-400" /><span>{point}</span></div>)}</div>
+      ) : layout === "code" ? (
+        <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/70 px-3 py-2 font-mono text-[11px] text-cyan-200">Code answer rendered with copyable blocks below.</div>
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-3">{(points.length ? points : ["Answer", "Key points", "Sources / next steps"]).slice(0, 3).map((point, idx) => <div key={idx} className="rounded-xl border border-zinc-800/70 bg-zinc-950/45 p-2 text-xs text-zinc-300"><span className="text-cyan-300">{idx + 1}.</span> {point}</div>)}</div>
+      )}
+    </div>
+  );
+}
 
 function randomLocalPrompts(count = 4): string[] {
   const pool = [...LOCAL_TRENDING_PROMPTS];
@@ -386,9 +465,9 @@ function CredonLogo({ size = 32, animate = false, className = "" }: { size?: num
 
 function ProgressDots({ stage }: { stage: ThinkingStage }) {
   const labels: Record<string, string> = {
-    searching: "Searching the web",
-    evaluating: "Analyzing sources",
-    composing: "Writing response",
+    searching: "Searching web… reading sources",
+    evaluating: "Evaluating evidence and route",
+    composing: "Writing structured answer",
   };
 
   return (
@@ -656,8 +735,9 @@ function ImageGrid({ images }: { images: ImageResult[] }) {
               unoptimized
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
             />
-            <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/80 to-transparent p-2">
+            <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/85 to-transparent p-2">
               <p className="text-[10px] text-white truncate">{img.title}</p>
+              <p className="text-[9px] text-cyan-100/80 truncate">{getDomain(img.source_url)}</p>
             </div>
           </button>
         ))}
@@ -679,7 +759,14 @@ function ImageGrid({ images }: { images: ImageResult[] }) {
                 <path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
-            {selected.title && <p className="text-sm text-zinc-300 mt-2 text-center">{selected.title}</p>}
+            <div className="mt-2 rounded-2xl border border-zinc-800/80 bg-zinc-950/80 p-3 text-center">
+              {selected.title && <p className="text-sm text-zinc-200">{selected.title}</p>}
+              <p className="mt-1 text-xs text-zinc-500">Source: {getDomain(selected.source_url)}</p>
+              <div className="mt-3 flex justify-center gap-2">
+                <a href={selected.source_url} target="_blank" rel="noreferrer" className="rounded-xl border border-zinc-700/70 px-3 py-2 text-xs text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200">Open source</a>
+                <a href={selected.image_url} target="_blank" rel="noreferrer" download className="rounded-xl bg-cyan-500 px-3 py-2 text-xs font-semibold text-black hover:bg-cyan-300">Save image</a>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -749,6 +836,9 @@ function TtsPanel({
   onSeek,
   onRate,
   onVoiceLang,
+  muted,
+  onMuted,
+  onClose,
 }: {
   sentences: string[];
   activeSentence: number;
@@ -762,6 +852,9 @@ function TtsPanel({
   onSeek: (index: number) => void;
   onRate: (rate: number) => void;
   onVoiceLang: (lang: string) => void;
+  muted: boolean;
+  onMuted: (muted: boolean) => void;
+  onClose: () => void;
 }) {
   const progress = sentences.length ? Math.round(((activeSentence + 1) / sentences.length) * 100) : 0;
   const voiceOptions = [
@@ -773,11 +866,19 @@ function TtsPanel({
   ];
   return (
     <div className="mt-3 rounded-2xl border border-cyan-400/20 bg-cyan-500/7 p-3 shadow-lg shadow-cyan-950/15">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div>
+          <p className="text-xs font-semibold text-cyan-100">Read aloud</p>
+          <p className="text-[10px] text-zinc-500">Voice follows selected language and remembers sound preference.</p>
+        </div>
+        <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-800/70 hover:text-zinc-200" title="Collapse read aloud">Collapse ▲</button>
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <select value={voiceLang} onChange={(e) => onVoiceLang(e.target.value)} className="min-h-10 rounded-xl border border-zinc-700/60 bg-zinc-950/70 px-2 text-xs text-zinc-200" title="Voice language">
           {voiceOptions.map((option) => <option key={`${option.label}-${option.value}`} value={option.value}>{option.label}</option>)}
         </select>
-        <button type="button" onClick={onPlay} className="min-h-10 rounded-xl bg-cyan-500 px-3 text-xs font-semibold text-black">Play</button>
+        <button type="button" onClick={() => onMuted(!muted)} className={`min-h-10 rounded-xl border px-3 text-xs font-semibold ${muted ? "border-amber-500/40 bg-amber-500/10 text-amber-200" : "border-zinc-700/60 text-zinc-200"}`}>{muted ? "Sound OFF" : "Sound ON"}</button>
+        <button type="button" onClick={onPlay} disabled={muted} className="min-h-10 rounded-xl bg-cyan-500 px-3 text-xs font-semibold text-black disabled:opacity-40">Play</button>
         <button type="button" onClick={paused ? onResume : onPause} className="min-h-10 rounded-xl border border-zinc-700/60 px-3 text-xs text-zinc-200">{paused ? "Resume" : "Pause"}</button>
         <button type="button" onClick={onStop} className="min-h-10 rounded-xl border border-zinc-700/60 px-3 text-xs text-zinc-200">Stop</button>
         <select value={rate} onChange={(e) => onRate(Number(e.target.value))} className="ml-auto min-h-10 rounded-xl border border-zinc-700/60 bg-zinc-950/70 px-2 text-xs text-zinc-200" title="Speech speed">
@@ -1131,9 +1232,11 @@ function PrivacyModal({ open, onClose }: { open: boolean; onClose: () => void })
         </div>
         <div className="px-6 py-5 overflow-y-auto flex-1 space-y-4 text-sm text-zinc-300 leading-relaxed">
           <p><strong className="text-white">Last updated:</strong> March 2026</p>
-          <div><h3 className="text-white font-semibold mb-1">Data We Collect</h3><p className="text-zinc-400">Credon AI collects your email (if signed up), chat messages, and session data. We do not sell or share your data.</p></div>
-          <div><h3 className="text-white font-semibold mb-1">AI Processing</h3><p className="text-zinc-400">Your messages are processed by locally-hosted AI models. No data is sent to external AI providers.</p></div>
+          <div><h3 className="text-white font-semibold mb-1">What is stored</h3><p className="text-zinc-400">Credon stores account email, chat messages, saved preferences, uploaded file metadata, and generated sources so your assistant can continue a useful conversation.</p></div>
+          <div><h3 className="text-white font-semibold mb-1">Temporary vs memory</h3><p className="text-zinc-400">Current chat context is temporary, recent session topics help continuity, and long-term memory should only keep explicit preferences. Draft prompts are cached locally in your browser.</p></div>
+          <div><h3 className="text-white font-semibold mb-1">Files and deletion</h3><p className="text-zinc-400">PDFs and images are extracted for searchable chunks. Deleting a chat or account should remove related messages and file references where supported by the backend.</p></div>
           <div><h3 className="text-white font-semibold mb-1">Security</h3><p className="text-zinc-400">We use Firebase Auth and encrypted storage. Your data is protected by industry-standard security.</p></div>
+          <div><h3 className="text-white font-semibold mb-1">AI limitations</h3><p className="text-zinc-400">AI answers can be wrong or incomplete. Verify medical, legal, financial, and current-event information with trusted sources.</p></div>
           <div><h3 className="text-white font-semibold mb-1">Your Rights</h3><p className="text-zinc-400">Delete your account and data anytime. Guest sessions are cleaned up periodically.</p></div>
           <div><h3 className="text-white font-semibold mb-1">Contact</h3><p className="text-zinc-400">privacy@credon.ai</p></div>
         </div>
@@ -1721,8 +1824,15 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   const [ttsPaused, setTtsPaused] = useState(false);
   const [ttsRate, setTtsRate] = useState(1);
   const [ttsVoiceLang, setTtsVoiceLang] = useState("en-US");
+  const [ttsMuted, setTtsMuted] = useState(() => typeof window !== "undefined" && localStorage.getItem("credon-tts-muted") === "1");
   const [inputMenuOpen, setInputMenuOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
+  const [connectionNotice, setConnectionNotice] = useState<string | null>(null);
+  const [productMode, setProductMode] = useState<ProductMode>("Student");
+  const [answerStyle, setAnswerStyle] = useState<AnswerStyle>("Balanced");
+  const [personality, setPersonality] = useState<Personality>("Professional");
+  const [chatSearch, setChatSearch] = useState("");
+  const [pinnedSessions, setPinnedSessions] = useState<string[]>([]);
   const [listening, setListening] = useState(false);
 
   /* ── Model & settings ── */
@@ -1846,9 +1956,21 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     return [];
   }, [messages, followUpsDismissed]);
 
-  /* Auto-scroll */
+  /* Auto-scroll only when the user is already near the bottom. This prevents unwanted
+     automatic jumping while someone is reading an earlier answer. */
+  const transcriptRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
+  const touchStartXRef = useRef<number | null>(null);
+
+  const updateAutoScrollIntent = useCallback(() => {
+    const el = transcriptRef.current;
+    if (!el) return;
+    shouldAutoScrollRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 180;
+  }, []);
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!shouldAutoScrollRef.current && !loading) return;
+    bottomRef.current?.scrollIntoView({ behavior: loading ? "auto" : "smooth", block: "end" });
   }, [messages, loading, thinkingStage]);
 
   /* Auto-resize textarea */
@@ -1860,7 +1982,11 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   }, [query]);
 
   useEffect(() => {
-    const updateOnlineState = () => setIsOnline(navigator.onLine);
+    const updateOnlineState = () => {
+      setIsOnline(navigator.onLine);
+      setConnectionNotice(navigator.onLine ? "Connection restored — draft preserved." : "Offline — saved draft locally.");
+      window.setTimeout(() => setConnectionNotice(null), 3500);
+    };
     window.addEventListener("online", updateOnlineState);
     window.addEventListener("offline", updateOnlineState);
     return () => {
@@ -1868,6 +1994,11 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       window.removeEventListener("offline", updateOnlineState);
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") localStorage.setItem("credon-tts-muted", ttsMuted ? "1" : "0");
+    if (ttsMuted) stopTts();
+  }, [ttsMuted]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2092,6 +2223,30 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     });
   };
 
+  const trackAnalytics = useCallback((event: string, detail?: string, durationMs?: number) => {
+    if (typeof window === "undefined") return;
+    const key = "credon-builder-analytics";
+    const current = JSON.parse(localStorage.getItem(key) || "{}");
+    current[event] = Number(current[event] || 0) + 1;
+    if (detail) current[`${event}:${detail}`] = Number(current[`${event}:${detail}`] || 0) + 1;
+    if (durationMs) {
+      current.total_response_ms = Number(current.total_response_ms || 0) + durationMs;
+      current.response_count = Number(current.response_count || 0) + 1;
+    }
+    localStorage.setItem(key, JSON.stringify(current));
+  }, []);
+
+  const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => { touchStartXRef.current = event.touches[0]?.clientX ?? null; };
+  const handleTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    const start = touchStartXRef.current;
+    if (start === null) return;
+    const delta = (event.changedTouches[0]?.clientX ?? start) - start;
+    touchStartXRef.current = null;
+    if (Math.abs(delta) < 90) return;
+    if (delta > 0) setSidebarOpen(true);
+    if (delta < 0) newChat();
+  };
+
   /* ── Send message ── */
   const send = async (
     text: string,
@@ -2106,6 +2261,10 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     const isRegenerate = options?.regenerate === true;
     let replyContext = options?.replyContext ?? replyTo?.text ?? null;
     const wantsPdfExport = /\b(create|generate|make|export|download)\b.*\bpdf\b|\bpdf\b.*\b(create|generate|export|download)\b/i.test(q);
+
+    trackAnalytics("prompt_sent", productMode);
+    trackAnalytics("personality_used", personality);
+    const requestStartedAt = Date.now();
 
     const queuedFiles = [...attachedFiles];
     if (queuedFiles.length > 0) {
@@ -2251,7 +2410,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         body: JSON.stringify({
           user_id: uid,
           session_id: currentSession,
-          query: backendQuery,
+          query: `${backendQuery}\n\n[Credon UX preferences] Product mode: ${productMode}. Personality: ${personality}. Answer style: ${answerStyle}. Automatically choose the best response layout (table/timeline/checklist/code/report) when useful.`,
           language: "auto",
           model: selectedModel || undefined,
           use_web: useWeb,
@@ -2490,6 +2649,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         return prev;
       });
 
+      trackAnalytics("response_success", undefined, Date.now() - requestStartedAt);
       void loadSessions();
     } catch (err) {
       if ((err as Error).name === "AbortError") return; // User stopped
@@ -2505,7 +2665,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
             body: JSON.stringify({
               user_id: uid,
               session_id: currentSession,
-              query: backendQuery,
+              query: `${backendQuery}\n\n[Credon UX preferences] Product mode: ${productMode}. Personality: ${personality}. Answer style: ${answerStyle}.`,
               language: "auto",
               model: selectedModel || undefined,
               use_web: true,
@@ -2525,6 +2685,8 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 confidence: data.confidence || "medium",
                 timestamp: Date.now(),
               }]);
+              trackAnalytics("response_success", undefined, Date.now() - requestStartedAt);
+              trackAnalytics("response_success", undefined, Date.now() - requestStartedAt);
               void loadSessions();
               return;
             }
@@ -2534,9 +2696,10 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         }
 
         // Final fallback: show a helpful message
+        trackAnalytics("failed_response");
         setMessages((prev) => [...prev, {
           role: "assistant" as const,
-          text: "I retried with Credon Brain, local model fallback, and DuckDuckGo-backed web search, but the connection is temporarily unstable. Please send it once again and I will continue from here.",
+          text: "Something went wrong while connecting to Credon Brain. I saved your question as a draft and tried the fallback route. You can retry, switch model in settings, or copy your question safely.",
           confidence: "low",
           timestamp: Date.now(),
           suggestions: ["Try my question again", "Rephrase this request", "Start a fresh chat"],
@@ -2609,6 +2772,10 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   };
 
   const speakAnswer = (idx: number, text: string) => {
+    if (ttsMuted) {
+      setTtsPanelIndex((prev) => prev === idx ? null : idx);
+      return;
+    }
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
     const sentences = splitSentences(text);
     if (!sentences.length) return;
@@ -2699,8 +2866,9 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   };
 
   const shareAssistantMessage = async (index: number, message: Message) => {
-    const payloadText = stripSuggestionSection(message.text).trim();
-    if (!payloadText) return;
+    const answerText = stripSuggestionSection(message.text).trim();
+    const payloadText = `Credon AI\n\nAnswer preview:\n${answerText}\n\nGenerated by Credon AI`;
+    if (!answerText) return;
 
     try {
       if (browserSupportsNativeShare) {
@@ -2723,8 +2891,9 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   };
 
   const shareAssistantToChannel = async (channel: "native" | "copy" | "whatsapp" | "email" | "sms", index: number, message: Message) => {
-    const payloadText = stripSuggestionSection(message.text).trim();
-    if (!payloadText) return;
+    const answerText = stripSuggestionSection(message.text).trim();
+    const payloadText = `Credon AI\n\nAnswer preview:\n${answerText}\n\nGenerated by Credon AI`;
+    if (!answerText) return;
     const encoded = encodeURIComponent(payloadText);
 
     if (channel === "native") {
@@ -2945,12 +3114,20 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   /* Session groups */
   const grouped = useMemo(() => {
     const g: Record<string, SessionSummary[]> = {};
-    for (const s of sessions) { const label = dateLabel(s.last_updated); (g[label] ??= []).push(s); }
+    const filtered = sessions.filter((session) =>
+      session.preview.toLowerCase().includes(chatSearch.toLowerCase()) ||
+      session.session_id.toLowerCase().includes(chatSearch.toLowerCase())
+    );
+    const ordered = [...filtered].sort((a, b) => Number(pinnedSessions.includes(b.session_id)) - Number(pinnedSessions.includes(a.session_id)));
+    for (const s of ordered) {
+      const label = pinnedSessions.includes(s.session_id) ? "Pinned" : dateLabel(s.last_updated);
+      (g[label] ??= []).push(s);
+    }
     return g;
-  }, [sessions]);
+  }, [sessions, chatSearch, pinnedSessions]);
 
   return (
-    <div className={`h-dvh flex overflow-hidden ambient-grid ${shellClass} ${answerFontClass}`}>
+    <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} className={`h-dvh flex overflow-hidden ambient-grid ${shellClass} ${answerFontClass}`}>
       {sidebarOpen && <div className="fixed inset-0 bg-black/60 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
       <SettingsModal
@@ -3025,6 +3202,12 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
             </button>
           </div>
         </div>
+        <div className="px-3 pt-3 space-y-2">
+          <input value={chatSearch} onChange={(e) => setChatSearch(e.target.value)} placeholder="Search chats" className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-3 py-2 text-xs text-zinc-200 outline-none focus:border-cyan-500/40" />
+          <div className="grid grid-cols-2 gap-1.5 text-[10px] text-zinc-400">
+            {["Personal", "Study", "Coding", "Startup", "Research"].map((folder) => <span key={folder} className="rounded-lg border border-zinc-800/70 bg-zinc-900/45 px-2 py-1">{folder}</span>)}
+          </div>
+        </div>
         <nav className="flex-1 overflow-y-auto px-2 pb-3 space-y-3 mt-2">
           {Object.entries(grouped).map(([label, items]) => items.length === 0 ? null : (
             <div key={label}>
@@ -3037,6 +3220,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                       <span className="truncate">{s.preview || "New conversation"}</span>
                     </button>
                     <div className="flex gap-1 px-3 pb-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition">
+                      <button type="button" onClick={() => setPinnedSessions((prev) => prev.includes(s.session_id) ? prev.filter((id) => id !== s.session_id) : [...prev, s.session_id])} className="text-[10px] text-zinc-500 hover:text-cyan-300">{pinnedSessions.includes(s.session_id) ? "Unpin" : "Pin"}</button>
                       <button type="button" onClick={() => { void renameChat(s.session_id, s.preview); }} className="text-[10px] text-zinc-500 hover:text-cyan-300">Rename</button>
                       <span className="text-[10px] text-zinc-700">•</span>
                       <button type="button" onClick={() => { void deleteChat(s.session_id); }} className="text-[10px] text-zinc-500 hover:text-rose-300">Delete</button>
@@ -3099,7 +3283,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         </header>
 
         {/* Messages / Welcome */}
-        <div className="flex-1 overflow-y-auto">
+        <div ref={transcriptRef} onScroll={updateAutoScrollIntent} className="flex-1 overflow-y-auto">
           {isEmptyChat ? (
             <div className="h-full flex flex-col items-center justify-center px-4 sm:px-6 -mt-10">
               <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-linear-to-br from-cyan-500 to-blue-600 flex items-center justify-center mb-5 sm:mb-6 shadow-xl shadow-cyan-500/20 overflow-hidden">
@@ -3109,6 +3293,11 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               <p className="welcome-subtitle text-zinc-500 text-sm sm:text-base mb-8 text-center max-w-md leading-relaxed font-medium">
                 Search, reason, create, and solve — powered by multi-model AI.
               </p>
+              <div className="mb-4 flex w-full max-w-2xl flex-wrap justify-center gap-2">
+                {WELCOME_ACTIONS.map((action) => (
+                  <button key={action.label} type="button" onClick={() => send(action.prompt)} className="rounded-full border border-cyan-400/20 bg-cyan-500/8 px-3 py-2 text-xs font-medium text-cyan-100 hover:bg-cyan-500/14">{action.label}</button>
+                ))}
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 w-full max-w-lg">
                 {homeSuggestions.map((s) => (
                   <button key={s} type="button" onClick={() => send(s)}
@@ -3182,6 +3371,15 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                       </div>
                     )}
 
+                    {m.role === "assistant" && m.text !== GREET && (
+                      <div className="mb-1.5 flex flex-wrap items-center gap-1.5 text-[10px] text-zinc-500">
+                        <span className="rounded-full border border-cyan-400/20 bg-cyan-500/8 px-2 py-0.5 text-cyan-200">{inferIntentLabel([...messages.slice(0, i)].reverse().find((item) => item.role === "user")?.text ?? m.text, m)}</span>
+                        {contextBadges(m).map((badge) => (
+                          <span key={badge} className="rounded-full border border-zinc-700/60 bg-zinc-900/70 px-2 py-0.5">Using: ✓ {badge}</span>
+                        ))}
+                      </div>
+                    )}
+
                     {/* Bubble */}
                     <div className={`rounded-2xl px-4 py-3 ${
                       m.role === "user"
@@ -3209,6 +3407,8 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                         );
                       })()}
                       {m.role === "assistant" && m.text !== GREET ? (
+                        <>
+                        <SmartLayoutPreview query={[...messages.slice(0, i)].reverse().find((item) => item.role === "user")?.text ?? ""} message={m} />
                         <div className="prose prose-invert prose-sm max-w-none text-[var(--answer-size)] leading-relaxed [&_pre]:bg-zinc-900/80 [&_pre]:border [&_pre]:border-zinc-700/30 [&_pre]:rounded-xl [&_pre]:p-3 [&_pre]:overflow-x-auto [&_code]:text-cyan-300 [&_code]:text-[13px] [&_a]:text-cyan-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-cyan-500/30 hover:[&_a]:decoration-cyan-500 [&_h1]:text-xl [&_h1]:tracking-tight [&_h2]:text-lg [&_h2]:tracking-tight [&_h3]:text-base [&_h1]:font-bold [&_h2]:font-semibold [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_li]:my-1 [&_blockquote]:border-l-2 [&_blockquote]:border-cyan-500/40 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-zinc-300 [&_table]:border-collapse [&_th]:border [&_th]:border-zinc-700 [&_th]:px-3 [&_th]:py-1.5 [&_th]:bg-zinc-800 [&_td]:border [&_td]:border-zinc-700 [&_td]:px-3 [&_td]:py-1.5 [&_hr]:border-zinc-700/50 [&_strong]:text-zinc-100 [&_strong]:font-semibold [&_strong]:bg-cyan-400/10 [&_strong]:px-1.5 [&_strong]:py-0.5 [&_strong]:rounded-md [&_li]:marker:text-cyan-300 [&_p:first-of-type]:text-zinc-100 [&_p:first-of-type]:font-medium">
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm, remarkMath]}
@@ -3236,6 +3436,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                           </ReactMarkdown>
                           {m.streaming && <span className="inline-block w-2 h-4 bg-cyan-400 animate-pulse rounded-sm ml-0.5 align-text-bottom" />}
                         </div>
+                        </>
                       ) : (
                         <div className="prose prose-invert prose-sm max-w-none text-[15px] leading-relaxed">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
@@ -3270,6 +3471,15 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
 
                     {m.role === "assistant" && m.metadata?.mode?.master_mode && !m.streaming && (
                       <p className="mt-1 text-[11px] text-cyan-300/90">Master Mode response: deep reasoning + sources + code optimization</p>
+                    )}
+
+                    {m.role === "assistant" && !m.streaming && m.text !== GREET && (
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-xl border border-zinc-800/60 bg-zinc-950/35 px-2 py-1.5">
+                        <span className="text-[10px] uppercase tracking-wide text-zinc-500">Answer style</span>
+                        {ANSWER_STYLES.map((style) => (
+                          <button key={style} type="button" onClick={() => { setAnswerStyle(style); void send(`Rewrite the previous answer in ${style} style without changing the facts.`, { replyContext: m.text }); }} className={`rounded-lg px-2 py-1 text-[10px] transition ${answerStyle === style ? "bg-cyan-500/15 text-cyan-200" : "text-zinc-500 hover:bg-zinc-800/70 hover:text-zinc-200"}`}>{style}</button>
+                        ))}
+                      </div>
                     )}
 
                     {/* Actions row */}
@@ -3422,7 +3632,10 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                         onStop={stopTts}
                         onSeek={(sentenceIndex) => seekTts(i, sentenceIndex)}
                         onRate={(rate) => { setTtsRate(rate); if (speakingIndex === i) seekTts(i, ttsSentenceIndex); }}
-                        onVoiceLang={(lang) => { setTtsVoiceLang(lang); if (speakingIndex === i) seekTts(i, ttsSentenceIndex); }}
+                        onVoiceLang={(lang) => { setTtsVoiceLang(lang); if (speakingIndex === i && !ttsMuted) seekTts(i, ttsSentenceIndex); }}
+                        muted={ttsMuted}
+                        onMuted={setTtsMuted}
+                        onClose={() => setTtsPanelIndex(null)}
                       />
                     )}
                   </div>
@@ -3512,6 +3725,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
 
         {/* ─── Input Area ─── */}
         <div className="border-t border-zinc-800/40 p-2 sm:p-4 bg-zinc-950/70 backdrop-blur-xl">
+          {connectionNotice && <div className="mx-auto mb-2 max-w-3xl rounded-xl border border-cyan-400/20 bg-cyan-500/8 px-3 py-2 text-xs text-cyan-100">{connectionNotice}</div>}
           <form onSubmit={onSubmit} className="max-w-3xl mx-auto">
             {/* Editing indicator */}
             {editingIndex !== null && (
@@ -3622,17 +3836,14 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               )}
             </div>
 
-            <div className="mb-2 flex gap-2 overflow-x-auto pb-1" aria-label="Quick actions">
-              {QUICK_ACTIONS.map((action) => (
-                <button
-                  key={action}
-                  type="button"
-                  onClick={() => setQuery((prev) => prev ? `${action}: ${prev}` : `${action}: `)}
-                  className="min-h-10 shrink-0 rounded-full border border-zinc-700/60 bg-zinc-900/70 px-3 text-xs font-medium text-zinc-300 transition hover:border-cyan-500/40 hover:bg-cyan-500/10 hover:text-cyan-200"
-                >
-                  {action}
-                </button>
+            <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-1" aria-label="Credon modes">
+              <span className="shrink-0 text-[10px] text-zinc-500">Auto detects intent</span>
+              {PRODUCT_MODES.map((mode) => (
+                <button key={mode} type="button" onClick={() => setProductMode(mode)} className={`min-h-9 shrink-0 rounded-full border px-3 text-xs font-medium transition ${productMode === mode ? "border-cyan-500/45 bg-cyan-500/12 text-cyan-200" : "border-zinc-700/60 bg-zinc-900/70 text-zinc-400 hover:border-cyan-500/30 hover:text-zinc-200"}`}>{mode}</button>
               ))}
+              <select value={personality} onChange={(e) => setPersonality(e.target.value as Personality)} className="min-h-9 shrink-0 rounded-full border border-zinc-700/60 bg-zinc-900/70 px-3 text-xs text-zinc-300" title="Credon personality">
+                {PERSONALITIES.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
             </div>
             <div className={`flex gap-1 sm:gap-2 items-end bg-zinc-900/80 border rounded-2xl px-1.5 sm:px-3 py-1.5 sm:py-2 focus-within:border-cyan-500/40 focus-within:shadow-cyan-500/5 transition-all shadow-lg shadow-black/20 ${allModesActive ? "border-cyan-500/45 trinity-glow" : "border-zinc-700/50"}`}>
               {/* Attach file button */}
