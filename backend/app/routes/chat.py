@@ -569,6 +569,34 @@ def _is_visual_query_local(query: str) -> bool:
     return explicit_visual or educational_visual
 
 
+
+def _is_direct_image_request(query: str) -> bool:
+    q = query.lower().strip()
+    if re.search(r"\b(show|find|get|display|search)\b.*\b(image|images|photo|photos|picture|pictures|wallpaper|logo)\b", q):
+        return True
+    if re.search(r"\b(image|photo|picture|wallpaper)\s+(of|for)\b", q):
+        return True
+    return False
+
+def _image_search_query(query: str) -> str:
+    q = re.sub(r"\b(please|show|find|get|display|search|me|some|images?|photos?|pictures?|wallpaper)\b", " ", query, flags=re.IGNORECASE)
+    q = re.sub(r"\s+", " ", q).strip(" ?.,:-")
+    return q or query.strip()
+
+def _image_answer(query: str, count: int, language: str) -> str:
+    subject = _image_search_query(query)
+    if count > 0:
+        return (
+            f"Here are image results for **{subject}**. Open a card to view the source or save the image."
+            if language == "en"
+            else f"**{subject}** ke image results yahan hain. Source dekhne ya image save karne ke liye card open karo."
+        )
+    return (
+        f"I could not fetch image cards for **{subject}** right now. Try again, or ask me to create a prompt for generating one."
+        if language == "en"
+        else f"Abhi **{subject}** ke image cards fetch nahi ho paaye. Dobara try karo, ya main image generation prompt bana sakta hoon."
+    )
+
 def _clean_answer(text: str) -> str:
     out = re.sub(r"\[(\d+)\]", "", text)
     out = re.sub(r"\n{3,}", "\n\n", out)
@@ -1197,6 +1225,33 @@ def chat(payload: ChatRequest) -> ChatResponse:
             metadata={"routing": {"selected_route": "realtime_shortcut", "reason": "realtime_query", "score": 1.0}},
         )
 
+    if _is_direct_image_request(cleaned_query):
+        image_query = _image_search_query(cleaned_query)
+        raw_images = search_images(image_query, max_results=6)
+        image_reply = _image_answer(cleaned_query, len(raw_images), target_language)
+        image_sources = [
+            {"title": img.get("title") or img.get("source_url") or "Image source", "url": img.get("source_url") or img.get("image_url") or ""}
+            for img in raw_images
+            if img.get("source_url") or img.get("image_url")
+        ]
+        metadata = {
+            "routing": {"selected_route": "image_search", "reason": "direct_image_request", "score": 1.0},
+            "agent_plan": manager_plan(cleaned_query, use_web=True, deep_think=False, code_mode=False),
+        }
+        save_message(payload.user_id, payload.session_id, "assistant", image_reply, confidence="high" if raw_images else "low", sources=image_sources, metadata=metadata)
+        elapsed = int((perf_counter() - start) * 1000)
+        return ChatResponse(
+            answer=image_reply,
+            language=target_language,
+            confidence="high" if raw_images else "low",
+            sources=[Source(title=s["title"], url=s["url"]) for s in image_sources],
+            images=[ImageResult(**img) for img in raw_images],
+            suggestions=["Show more images", "Create an image generation prompt", "Find official sources"],
+            thinking="Image request detected — searched image results.",
+            latency_ms=elapsed,
+            metadata=metadata,
+        )
+
     greeting_reply = _greeting_response(cleaned_query, target_language)
     if greeting_reply:
         save_message(payload.user_id, payload.session_id, "assistant", greeting_reply)
@@ -1605,6 +1660,30 @@ def chat_stream(payload: ChatRequest):
             yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'suggestions': [], 'latency_ms': elapsed, 'metadata': {'routing': {'selected_route': 'realtime_shortcut_stream'}}})}\n\n"
 
         return StreamingResponse(_realtime_events(), media_type="text/event-stream")
+
+    if _is_direct_image_request(cleaned_query):
+        image_query = _image_search_query(cleaned_query)
+        raw_images = search_images(image_query, max_results=6)
+        image_reply = _image_answer(cleaned_query, len(raw_images), target_language)
+        image_sources = [
+            {"title": img.get("title") or img.get("source_url") or "Image source", "url": img.get("source_url") or img.get("image_url") or ""}
+            for img in raw_images
+            if img.get("source_url") or img.get("image_url")
+        ]
+        metadata = {
+            "routing": {"selected_route": "image_search_stream", "reason": "direct_image_request", "score": 1.0},
+            "agent_plan": manager_plan(cleaned_query, use_web=True, deep_think=False, code_mode=False),
+        }
+        save_message(payload.user_id, payload.session_id, "assistant", image_reply, confidence="high" if raw_images else "low", sources=image_sources, metadata=metadata)
+        elapsed = int((perf_counter() - start) * 1000)
+
+        def _image_events():
+            yield f"data: {_json.dumps({'type': 'status', 'stage': 'searching', 'message': 'Finding image cards...'})}\n\n"
+            yield f"data: {_json.dumps({'type': 'sources', 'sources': image_sources, 'confidence': 'high' if raw_images else 'low', 'images': raw_images})}\n\n"
+            yield f"data: {_json.dumps({'type': 'token', 'content': image_reply})}\n\n"
+            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high' if raw_images else 'low', 'sources': image_sources, 'images': raw_images, 'suggestions': ['Show more images', 'Create an image generation prompt', 'Find official sources'], 'latency_ms': elapsed, 'metadata': metadata})}\n\n"
+
+        return StreamingResponse(_image_events(), media_type="text/event-stream")
 
     greeting_reply = _greeting_response(cleaned_query, target_language)
     if greeting_reply:

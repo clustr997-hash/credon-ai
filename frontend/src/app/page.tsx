@@ -2876,7 +2876,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      setUploadError("Could not export PDF right now. Please try again.");
+      setUploadError("Export failed. Retry, try text export, or copy the answer.");
     }
   };
 
@@ -2912,7 +2912,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       const blob = await r.blob();
       openChatPdfBlob(blob, `credon-chat-${currentSession}.pdf`, action);
     } catch {
-      setUploadError(`Could not ${action === "view" ? "open" : "download"} current chat PDF.`);
+      setUploadError(`Export failed. Retry, try text export, or copy the chat.`);
     }
   };
 
@@ -2927,7 +2927,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       const blob = await r.blob();
       openChatPdfBlob(blob, "credon-all-chats.pdf", action);
     } catch {
-      setUploadError(`Could not ${action === "view" ? "open" : "download"} all chats PDF.`);
+      setUploadError(`Export failed. Retry, try text export, or copy the chats.`);
     }
   };
 
@@ -2947,7 +2947,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       const blob = await r.blob();
       openChatPdfBlob(blob, `credon-chat-${sessionId}.pdf`, action);
     } catch {
-      setUploadError(`Could not ${action === "view" ? "open" : "download"} this session PDF.`);
+      setUploadError(`Export failed. Retry, try text export, or copy this session.`);
     }
   };
 
@@ -3278,12 +3278,17 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                     )}
 
                     {m.role === "assistant" && m.text !== GREET && (
-                      <div className="mb-1.5 flex flex-wrap items-center gap-1.5 text-[10px] text-zinc-500">
-                        <span className="rounded-full border border-cyan-400/20 bg-cyan-500/8 px-2 py-0.5 text-cyan-200">{inferIntentLabel([...messages.slice(0, i)].reverse().find((item) => item.role === "user")?.text ?? m.text, m)}</span>
-                        {contextBadges(m).map((badge) => (
-                          <span key={badge} className="rounded-full border border-zinc-700/60 bg-zinc-900/70 px-2 py-0.5">Using: ✓ {badge}</span>
-                        ))}
-                      </div>
+                      <details className="group mb-1.5 text-[10px] text-zinc-500">
+                        <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full border border-zinc-800/70 bg-zinc-950/45 px-2 py-0.5 hover:border-cyan-500/25 hover:text-zinc-300">
+                          <span>{inferIntentLabel([...messages.slice(0, i)].reverse().find((item) => item.role === "user")?.text ?? m.text, m).replace(" selected", "")}</span>
+                          <span className="text-zinc-700">Details</span>
+                        </summary>
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {contextBadges(m).map((badge) => (
+                            <span key={badge} className="rounded-full border border-zinc-800/70 bg-zinc-900/70 px-2 py-0.5">Using: ✓ {badge}</span>
+                          ))}
+                        </div>
+                      </details>
                     )}
 
                     {/* Bubble */}
@@ -3353,13 +3358,15 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                     {/* Sources */}
                     {m.role === "assistant" && m.sources && m.sources.length > 0 && <SourcesPanel sources={m.sources} />}
 
-                    {/* Flow timeline */}
+                    {/* Power-user routing details: hidden by default so normal users see answer first. */}
                     {m.role === "assistant" && !m.streaming && m.text !== GREET && (
-                      <FlowTimeline message={m} />
-                    )}
-
-                    {m.role === "assistant" && !m.streaming && m.text !== GREET && (
-                      <AgentInsightCard message={m} />
+                      <details className="mt-2 w-full max-w-xl text-xs text-zinc-500">
+                        <summary className="cursor-pointer list-none rounded-xl border border-zinc-800/60 bg-zinc-950/30 px-3 py-2 hover:border-cyan-500/25 hover:text-zinc-300">
+                          Details: sources, confidence, and manager route
+                        </summary>
+                        <FlowTimeline message={m} />
+                        <AgentInsightCard message={m} />
+                      </details>
                     )}
 
                     {/* Confidence */}
