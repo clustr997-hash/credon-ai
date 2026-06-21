@@ -29,7 +29,41 @@ import { enableFcmAndGetToken, firebaseAuth, getFcmReadiness } from "@/lib/fireb
 
 /* ─────────────────────────── Types ─────────────────────────── */
 
-type Source = { title: string; url: string };
+type Source = { title: string; url: string; summary?: string; trust_score?: number | string };
+
+function getDomain(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
+}
+
+function faviconUrl(url: string): string {
+  const domain = getDomain(url);
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`;
+}
+
+function sourceConfidenceLabel(source: Source): string {
+  const raw = source.trust_score;
+  if (typeof raw === "number") return raw >= 0.75 ? "High confidence" : raw >= 0.5 ? "Medium confidence" : "Check source";
+  if (typeof raw === "string" && raw.trim()) return raw;
+  return "High confidence";
+}
+
+type SpeechRecognitionLike = {
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  start: () => void;
+  onresult: ((event: { results: { 0: { transcript: string } }[] }) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+};
+
+function splitSentences(text: string): string[] {
+  return text
+    .replace(/```[\s\S]*?```/g, "Code block.")
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.replace(/[#*_`>]/g, "").trim())
+    .filter(Boolean);
+}
 
 type ImageResult = {
   image_url: string;
@@ -135,6 +169,8 @@ const LOCAL_TRENDING_PROMPTS = [
   "What are the most useful coding skills right now?",
   "Explain space technology breakthroughs in simple words",
 ];
+
+const QUICK_ACTIONS = ["Research", "Summarize", "Explain", "Compare", "Create Table", "Create Chart"] as const;
 
 function randomLocalPrompts(count = 4): string[] {
   const pool = [...LOCAL_TRENDING_PROMPTS];
@@ -301,6 +337,9 @@ function stripSuggestionSection(text: string): string {
     /\n*\*{0,2}You might also want to know:?\*{0,2}\s*\n[\s\S]*$/i,
     /\n*#{1,3}\s*You might also want to know:?\s*\n[\s\S]*$/i,
     /\n*You might also want to know:?\s*\n[\s\S]*$/i,
+    /\n*\*{0,2}Related questions:?\*{0,2}\s*\n[\s\S]*$/i,
+    /\n*#{1,3}\s*Related questions:?\s*\n[\s\S]*$/i,
+    /\n*Related questions:?\s*\n[\s\S]*$/i,
   ];
   let result = text;
   for (const p of patterns) {
@@ -498,7 +537,7 @@ function FlowTimeline({ message }: { message: Message }) {
 
   // Step 3: Evaluator
   if (message.evaluator && (message.evaluator.input_sources ?? 0) > 0) {
-    steps.push({ label: `Evaluated ${message.evaluator.selected_sources}/${message.evaluator.input_sources}`, detail: message.evaluator.avg_score ? `quality ${message.evaluator.avg_score.toFixed(2)}` : undefined, icon: "eval" });
+    steps.push({ label: `Evaluated ${message.evaluator.selected_sources}/${message.evaluator.input_sources}`, detail: "Quality checked", icon: "eval" });
   }
 
   // Step 4: Thinking
@@ -520,7 +559,7 @@ function FlowTimeline({ message }: { message: Message }) {
         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
         </svg>
-        <span>Flow</span>
+        <span>Reasoning / Flow</span>
         <svg className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M19 9l-7 7-7-7" /></svg>
       </button>
       {open && (
@@ -645,6 +684,120 @@ function ImageGrid({ images }: { images: ImageResult[] }) {
         </div>
       )}
     </>
+  );
+}
+
+
+function SourcesPanel({ sources }: { sources: Source[] }) {
+  const [open, setOpen] = useState(false);
+  const visible = open ? sources : sources.slice(0, 3);
+  if (!sources.length) return null;
+  return (
+    <div className="mt-3 rounded-2xl border border-zinc-800/70 bg-zinc-950/35 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex min-h-11 w-full items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-zinc-900/70 transition"
+        aria-expanded={open}
+      >
+        <div>
+          <p className="text-xs font-semibold text-zinc-200">Sources ({sources.length})</p>
+          <p className="text-[11px] text-zinc-500">Collapsed for faster reading</p>
+        </div>
+        <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/20 bg-cyan-500/10 px-2.5 py-1 text-[11px] text-cyan-200">
+          {open ? "Hide" : "Expand"}
+          <svg className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M19 9l-7 7-7-7" /></svg>
+        </span>
+      </button>
+      {open && (
+        <div className="grid gap-2 border-t border-zinc-800/60 p-2">
+          {visible.map((source, idx) => (
+            <a key={`${source.url}-${idx}`} href={source.url} target="_blank" rel="noreferrer" className="group rounded-xl border border-zinc-800/80 bg-zinc-900/55 p-3 transition hover:border-cyan-500/35 hover:bg-zinc-900/80">
+              <div className="flex items-start gap-3">
+                <Image src={faviconUrl(source.url)} alt="" width={22} height={22} unoptimized className="mt-0.5 h-5.5 w-5.5 rounded" />
+                <div className="min-w-0 flex-1">
+                  <p className="line-clamp-2 text-sm font-medium text-zinc-100 group-hover:text-cyan-100">{source.title || getDomain(source.url)}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                    <span>{getDomain(source.url)}</span>
+                    <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-emerald-300">{sourceConfidenceLabel(source)}</span>
+                  </div>
+                  {source.summary && <p className="mt-1.5 text-xs leading-relaxed text-zinc-400">{source.summary}</p>}
+                </div>
+                <span className="rounded-lg border border-zinc-700/70 px-2 py-1 text-[11px] text-zinc-300">Open</span>
+              </div>
+            </a>
+          ))}
+          {!open && sources.length > 3 && null}
+          {sources.length > 3 && <p className="px-1 pb-1 text-[11px] text-zinc-500">{open ? "Showing all sources" : `${sources.length - 3} more sources available`}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+function TtsPanel({
+  sentences,
+  activeSentence,
+  paused,
+  rate,
+  voiceLang,
+  onPlay,
+  onPause,
+  onResume,
+  onStop,
+  onSeek,
+  onRate,
+  onVoiceLang,
+}: {
+  sentences: string[];
+  activeSentence: number;
+  paused: boolean;
+  rate: number;
+  voiceLang: string;
+  onPlay: () => void;
+  onPause: () => void;
+  onResume: () => void;
+  onStop: () => void;
+  onSeek: (index: number) => void;
+  onRate: (rate: number) => void;
+  onVoiceLang: (lang: string) => void;
+}) {
+  const progress = sentences.length ? Math.round(((activeSentence + 1) / sentences.length) * 100) : 0;
+  const voiceOptions = [
+    { label: "English US", value: "en-US" },
+    { label: "English UK", value: "en-GB" },
+    { label: "English India", value: "en-IN" },
+    { label: "Hindi", value: "hi-IN" },
+    { label: "Hinglish", value: "en-IN" },
+  ];
+  return (
+    <div className="mt-3 rounded-2xl border border-cyan-400/20 bg-cyan-500/7 p-3 shadow-lg shadow-cyan-950/15">
+      <div className="flex flex-wrap items-center gap-2">
+        <select value={voiceLang} onChange={(e) => onVoiceLang(e.target.value)} className="min-h-10 rounded-xl border border-zinc-700/60 bg-zinc-950/70 px-2 text-xs text-zinc-200" title="Voice language">
+          {voiceOptions.map((option) => <option key={`${option.label}-${option.value}`} value={option.value}>{option.label}</option>)}
+        </select>
+        <button type="button" onClick={onPlay} className="min-h-10 rounded-xl bg-cyan-500 px-3 text-xs font-semibold text-black">Play</button>
+        <button type="button" onClick={paused ? onResume : onPause} className="min-h-10 rounded-xl border border-zinc-700/60 px-3 text-xs text-zinc-200">{paused ? "Resume" : "Pause"}</button>
+        <button type="button" onClick={onStop} className="min-h-10 rounded-xl border border-zinc-700/60 px-3 text-xs text-zinc-200">Stop</button>
+        <select value={rate} onChange={(e) => onRate(Number(e.target.value))} className="ml-auto min-h-10 rounded-xl border border-zinc-700/60 bg-zinc-950/70 px-2 text-xs text-zinc-200" title="Speech speed">
+          {[0.75, 1, 1.25, 1.5, 2].map((value) => <option key={value} value={value}>{value}x</option>)}
+        </select>
+      </div>
+      <label className="mt-3 block text-[11px] text-zinc-500">Reading progress: {progress}%</label>
+      <input type="range" min={0} max={Math.max(sentences.length - 1, 0)} value={Math.min(activeSentence, Math.max(sentences.length - 1, 0))} onChange={(e) => onSeek(Number(e.target.value))} className="mt-1 w-full accent-cyan-400" aria-label="Seek read aloud sentence" />
+      <div className="mt-2 max-h-28 overflow-y-auto space-y-1 text-xs leading-relaxed">
+        {sentences.slice(Math.max(0, activeSentence - 1), activeSentence + 3).map((sentence, offset) => {
+          const sentenceIndex = Math.max(0, activeSentence - 1) + offset;
+          const isActive = sentenceIndex === activeSentence;
+          return (
+            <button key={`${sentenceIndex}-${sentence.slice(0, 16)}`} type="button" onClick={() => onSeek(sentenceIndex)} className={`block w-full rounded-xl px-2 py-1.5 text-left transition ${isActive ? "bg-cyan-400/15 text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.22)]" : sentenceIndex < activeSentence ? "text-zinc-300" : "text-zinc-500"}`}>
+              {sentence}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -1563,6 +1716,14 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   const [fcmStatus, setFcmStatus] = useState("Checking FCM readiness...");
   const [geoPoint, setGeoPoint] = useState<{ latitude: number; longitude: number } | null>(null);
   const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
+  const [ttsPanelIndex, setTtsPanelIndex] = useState<number | null>(null);
+  const [ttsSentenceIndex, setTtsSentenceIndex] = useState(0);
+  const [ttsPaused, setTtsPaused] = useState(false);
+  const [ttsRate, setTtsRate] = useState(1);
+  const [ttsVoiceLang, setTtsVoiceLang] = useState("en-US");
+  const [inputMenuOpen, setInputMenuOpen] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
+  const [listening, setListening] = useState(false);
 
   /* ── Model & settings ── */
   const [, setModels] = useState<ModelInfo[]>([]);
@@ -1608,6 +1769,8 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [transcriptLoading, setTranscriptLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const ttsUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   /* ── Abort controller for stop button ── */
   const abortRef = useRef<AbortController | null>(null);
@@ -1695,6 +1858,30 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 150) + "px";
     }
   }, [query]);
+
+  useEffect(() => {
+    const updateOnlineState = () => setIsOnline(navigator.onLine);
+    window.addEventListener("online", updateOnlineState);
+    window.addEventListener("offline", updateOnlineState);
+    return () => {
+      window.removeEventListener("online", updateOnlineState);
+      window.removeEventListener("offline", updateOnlineState);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const key = `credon-draft:${uid}`;
+    const stored = localStorage.getItem(key);
+    if (stored && !query) setQuery(stored);
+  // Load once per user to avoid overwriting active typing.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(`credon-draft:${uid}`, query);
+  }, [query, uid]);
 
   /* Paste image from clipboard */
   useEffect(() => {
@@ -2039,6 +2226,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     }
 
     setQuery("");
+    if (typeof window !== "undefined") localStorage.removeItem(`credon-draft:${uid}`);
     queuedFiles.forEach((item) => {
       if (item.preview) URL.revokeObjectURL(item.preview);
     });
@@ -2167,6 +2355,9 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                   assistantIdx.current = prev.length;
                   return [...prev, { role: "assistant", text: "", timestamp: Date.now(), streaming: true, thinking: accThinking || undefined, thinkingStreaming: false }];
                 });
+                window.setTimeout(() => {
+                  document.querySelector(`[data-answer-index="${assistantIdx.current}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }, 80);
               }
 
               setMessages((prev) => {
@@ -2384,21 +2575,96 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     }
   };
 
+  const speakSentence = (messageIndex: number, sentenceIndex: number, options?: { restart?: boolean }) => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    const message = messages[messageIndex];
+    if (!message || message.role !== "assistant") return;
+    const sentences = splitSentences(message.text);
+    const sentence = sentences[sentenceIndex];
+    if (!sentence) return;
+    if (options?.restart) window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(sentence);
+    utterance.lang = ttsVoiceLang;
+    utterance.rate = ttsRate;
+    utterance.pitch = 1;
+    utterance.onend = () => {
+      if (sentenceIndex < sentences.length - 1) {
+        setTtsSentenceIndex(sentenceIndex + 1);
+        speakSentence(messageIndex, sentenceIndex + 1, { restart: false });
+        return;
+      }
+      setSpeakingIndex(null);
+      setTtsPaused(false);
+    };
+    utterance.onerror = () => {
+      setSpeakingIndex(null);
+      setTtsPaused(false);
+    };
+    ttsUtteranceRef.current = utterance;
+    setSpeakingIndex(messageIndex);
+    setTtsPanelIndex(messageIndex);
+    setTtsSentenceIndex(sentenceIndex);
+    setTtsPaused(false);
+    window.speechSynthesis.speak(utterance);
+  };
+
   const speakAnswer = (idx: number, text: string) => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    const sentences = splitSentences(text);
+    if (!sentences.length) return;
     if (speakingIndex === idx) {
       window.speechSynthesis.cancel();
       setSpeakingIndex(null);
+      setTtsPaused(false);
       return;
     }
+    speakSentence(idx, 0, { restart: true });
+  };
+
+  const pauseTts = () => {
+    if (typeof window === "undefined") return;
+    window.speechSynthesis.pause();
+    setTtsPaused(true);
+  };
+
+  const resumeTts = () => {
+    if (typeof window === "undefined") return;
+    window.speechSynthesis.resume();
+    setTtsPaused(false);
+  };
+
+  const stopTts = () => {
+    if (typeof window === "undefined") return;
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text.replace(/```[\s\S]*?```/g, " code block "));
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    utterance.onend = () => setSpeakingIndex(null);
-    utterance.onerror = () => setSpeakingIndex(null);
-    setSpeakingIndex(idx);
-    window.speechSynthesis.speak(utterance);
+    setSpeakingIndex(null);
+    setTtsPaused(false);
+  };
+
+  const seekTts = (messageIndex: number, sentenceIndex: number) => {
+    speakSentence(messageIndex, sentenceIndex, { restart: true });
+  };
+
+  const startVoiceInput = () => {
+    if (typeof window === "undefined") return;
+    const recognitionWindow = window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike; webkitSpeechRecognition?: new () => SpeechRecognitionLike };
+    const Recognition = recognitionWindow.SpeechRecognition ?? recognitionWindow.webkitSpeechRecognition;
+    if (!Recognition) {
+      setUploadError("Voice input is not supported in this browser.");
+      return;
+    }
+    const recognition = new Recognition();
+    recognition.lang = ttsVoiceLang;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.onresult = (event) => {
+      const transcript = event.results[0]?.[0]?.transcript ?? "";
+      if (transcript) setQuery((prev) => `${prev}${prev ? " " : ""}${transcript}`);
+    };
+    recognition.onerror = () => setUploadError("Voice input stopped. Please try again.");
+    recognition.onend = () => setListening(false);
+    setListening(true);
+    recognition.start();
+    setInputMenuOpen(false);
   };
 
   const renameChat = async (sessionId: string, currentPreview: string) => {
@@ -2736,6 +3002,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       {/* Hidden file input */}
         <label htmlFor="chat-image-upload" className="sr-only">Attach image or PDF files</label>
         <input id="chat-image-upload" ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={handleFileSelect} aria-label="Attach image or PDF files" />
+        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} aria-label="Take a photo" />
 
       {/* ─── Sidebar (DeepSeek-style) ─── */}
       <aside className={`fixed md:static inset-y-0 left-0 z-40 w-70 bg-zinc-950/75 backdrop-blur-2xl border-r border-cyan-400/10 flex flex-col transition-transform duration-200 ease-out md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
@@ -2866,18 +3133,18 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               ))}
             </div>
           ) : (
-            <div className="max-w-3xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-5">
+            <div className="max-w-[95%] sm:max-w-4xl mx-auto px-2 sm:px-5 py-4 sm:py-6 space-y-4 sm:space-y-5">
               {messages.map((m, i) => (
-                <div key={i} className={`message-bubble flex gap-2.5 sm:gap-3 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
+                <div key={i} data-answer-index={m.role === "assistant" ? i : undefined} className={`message-bubble flex gap-2.5 sm:gap-3 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
                   {/* Avatar */}
-                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 overflow-hidden ${
+                  <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 overflow-hidden ${
                     m.role === "assistant" ? "bg-linear-to-br from-cyan-500 to-blue-600 shadow-md shadow-cyan-500/10" : "bg-zinc-700"
                   }`}>
                     {m.role === "assistant" ? <CredonLogo size={22} /> : <span className="text-[10px] sm:text-[11px] font-bold">{displayName[0]?.toUpperCase() ?? "U"}</span>}
                   </div>
 
                   {/* Content */}
-                  <div className={`flex flex-col max-w-[88%] sm:max-w-[80%] min-w-0 ${m.role === "user" ? "items-end" : "items-start"}`}>
+                  <div className={`flex flex-col max-w-[95%] sm:max-w-[88%] min-w-0 ${m.role === "user" ? "items-end" : "items-start"}`}>
                     {/* Reply context (WhatsApp-style) */}
                     {m.replyTo && (
                       <div className="mb-1 rounded-lg bg-zinc-800/50 border-l-2 border-cyan-500/60 px-3 py-1.5 max-w-full">
@@ -2980,28 +3247,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                     {m.role === "assistant" && m.images && <ImageGrid images={m.images} />}
 
                     {/* Sources */}
-                    {m.role === "assistant" && m.sources && m.sources.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {m.sources.map((s, si) => (
-                          <a key={si} href={s.url} target="_blank" rel="noreferrer"
-                            className="inline-flex items-center gap-1 text-[11px] bg-zinc-800/60 border border-zinc-700/30 rounded-full px-2.5 py-1 text-cyan-400 hover:text-cyan-300 hover:bg-zinc-800 transition">
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" />
-                              <path strokeLinecap="round" d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" />
-                            </svg>
-                            {s.title.length > 35 ? s.title.slice(0, 35) + "\u2026" : s.title}
-                          </a>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Evaluator diagnostics */}
-                    {m.role === "assistant" && m.evaluator && (m.evaluator.input_sources ?? 0) > 0 && (
-                      <div className="mt-1 text-[11px] text-zinc-500">
-                        Evaluator selected {m.evaluator.selected_sources ?? 0}/{m.evaluator.input_sources ?? 0} sources
-                        {(m.evaluator.avg_score ?? 0) > 0 ? ` • quality ${Number(m.evaluator.avg_score ?? 0).toFixed(2)}` : ""}
-                      </div>
-                    )}
+                    {m.role === "assistant" && m.sources && m.sources.length > 0 && <SourcesPanel sources={m.sources} />}
 
                     {/* Flow timeline */}
                     {m.role === "assistant" && !m.streaming && m.text !== GREET && (
@@ -3162,6 +3408,23 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                         </>
                       )}
                     </div>
+
+                    {m.role === "assistant" && ttsPanelIndex === i && m.text !== GREET && (
+                      <TtsPanel
+                        sentences={splitSentences(m.text)}
+                        activeSentence={ttsSentenceIndex}
+                        paused={ttsPaused}
+                        rate={ttsRate}
+                        voiceLang={ttsVoiceLang}
+                        onPlay={() => seekTts(i, ttsSentenceIndex)}
+                        onPause={pauseTts}
+                        onResume={resumeTts}
+                        onStop={stopTts}
+                        onSeek={(sentenceIndex) => seekTts(i, sentenceIndex)}
+                        onRate={(rate) => { setTtsRate(rate); if (speakingIndex === i) seekTts(i, ttsSentenceIndex); }}
+                        onVoiceLang={(lang) => { setTtsVoiceLang(lang); if (speakingIndex === i) seekTts(i, ttsSentenceIndex); }}
+                      />
+                    )}
                   </div>
                 </div>
               ))}
@@ -3210,15 +3473,15 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
           <div className="border-t border-zinc-800/30 bg-[#09090b]/60 backdrop-blur-sm">
             <div className="max-w-3xl mx-auto px-3 sm:px-6 py-2 sm:py-3">
               <div className="flex items-center justify-between mb-1.5">
-                <p className="text-[11px] text-zinc-500 font-medium">You might also want to know:</p>
+                <p className="text-[11px] text-zinc-500 font-medium">Related questions</p>
                 <button type="button" onClick={() => setFollowUpsDismissed(true)} className="text-zinc-600 hover:text-zinc-300 transition" title="Dismiss suggestions">
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
-              <div className="flex flex-col sm:flex-row flex-wrap gap-1.5 sm:gap-2">
+              <div className="flex gap-2 overflow-x-auto pb-1">
                 {followUps.map((s, i) => (
                   <button key={i} type="button" onClick={() => send(s)}
-                    className="suggestion-chip flex items-center gap-2 text-xs text-zinc-300 bg-zinc-800/60 hover:bg-cyan-500/10 border border-zinc-700/40 hover:border-cyan-500/30 rounded-xl px-3 py-2.5 transition hover:text-cyan-300 text-left">
+                    className="suggestion-chip flex min-w-[220px] items-center gap-2 text-xs text-zinc-300 bg-zinc-800/60 hover:bg-cyan-500/10 border border-zinc-700/40 hover:border-cyan-500/30 rounded-xl px-3 py-2.5 transition hover:text-cyan-300 text-left">
                     <span className="flex items-center justify-center w-5 h-5 rounded-full bg-zinc-700/60 text-[10px] font-bold text-cyan-400 shrink-0">{i + 1}</span>
                     <span>{s}</span>
                   </button>
@@ -3303,6 +3566,14 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               <p className="mb-2 text-[11px] text-amber-300">{uploadError}</p>
             )}
 
+            {!isOnline && (
+              <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                <span>Offline — draft saved on this device.</span>
+                <button type="button" onClick={() => window.location.reload()} className="rounded-lg border border-amber-300/30 px-2 py-1">Retry</button>
+              </div>
+            )}
+            {isOnline && query && <p className="mb-1 text-[10px] text-zinc-600">Saved draft</p>}
+
             {allModesActive && (
               <div className="mb-1.5 rounded-xl border border-cyan-400/35 bg-linear-to-r from-cyan-500/12 via-blue-500/8 to-cyan-500/12 px-2.5 py-1 text-[10px] sm:text-[11px] text-cyan-100 trinity-glow">
                 <span className="sm:hidden">Master Mode active</span>
@@ -3350,14 +3621,37 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 </div>
               )}
             </div>
+
+            <div className="mb-2 flex gap-2 overflow-x-auto pb-1" aria-label="Quick actions">
+              {QUICK_ACTIONS.map((action) => (
+                <button
+                  key={action}
+                  type="button"
+                  onClick={() => setQuery((prev) => prev ? `${action}: ${prev}` : `${action}: `)}
+                  className="min-h-10 shrink-0 rounded-full border border-zinc-700/60 bg-zinc-900/70 px-3 text-xs font-medium text-zinc-300 transition hover:border-cyan-500/40 hover:bg-cyan-500/10 hover:text-cyan-200"
+                >
+                  {action}
+                </button>
+              ))}
+            </div>
             <div className={`flex gap-1 sm:gap-2 items-end bg-zinc-900/80 border rounded-2xl px-1.5 sm:px-3 py-1.5 sm:py-2 focus-within:border-cyan-500/40 focus-within:shadow-cyan-500/5 transition-all shadow-lg shadow-black/20 ${allModesActive ? "border-cyan-500/45 trinity-glow" : "border-zinc-700/50"}`}>
               {/* Attach file button */}
-              <button type="button" onClick={() => fileInputRef.current?.click()}
-                className="p-1.5 sm:p-2 text-zinc-500 hover:text-zinc-300 transition rounded-lg hover:bg-zinc-800/60 shrink-0" title="Attach image or PDF">
+              <div className="relative shrink-0">
+              <button type="button" onClick={() => setInputMenuOpen((prev) => !prev)}
+                className={`p-1.5 sm:p-2 transition rounded-lg shrink-0 ${inputMenuOpen ? "text-cyan-200 bg-cyan-500/10" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`} title="Add image, document, camera, or voice">
                 <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
                 </svg>
               </button>
+              {inputMenuOpen && (
+                <div className="absolute bottom-11 left-0 z-30 w-44 rounded-2xl border border-zinc-700/60 bg-zinc-950/95 p-2 shadow-2xl backdrop-blur-xl">
+                  <button type="button" onClick={() => { fileInputRef.current?.click(); setInputMenuOpen(false); }} className="flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-xs text-zinc-200 hover:bg-zinc-800/70">Image upload</button>
+                  <button type="button" onClick={() => { fileInputRef.current?.click(); setInputMenuOpen(false); }} className="flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-xs text-zinc-200 hover:bg-zinc-800/70">PDF document</button>
+                  <button type="button" onClick={() => { cameraInputRef.current?.click(); setInputMenuOpen(false); }} className="flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-xs text-zinc-200 hover:bg-zinc-800/70">Camera</button>
+                  <button type="button" onClick={startVoiceInput} className="flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-xs text-zinc-200 hover:bg-zinc-800/70">{listening ? "Listening..." : "Voice input"}</button>
+                </div>
+              )}
+              </div>
 
               <button
                 type="button"
