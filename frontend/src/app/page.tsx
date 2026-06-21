@@ -72,6 +72,11 @@ type Message = {
     routing?: { selected_route?: string; reason?: string; score?: number };
     mode?: { code_mode?: boolean; master_mode?: boolean };
     evaluator?: Record<string, unknown>;
+    agent_plan?: { intent?: string; agents?: string[]; reason?: string; mode?: Record<string, boolean> };
+    agent?: string;
+    tools?: string[];
+    freshness?: string;
+    chart?: { type?: string; title?: string; labels?: string[]; values?: number[]; unit?: string };
   };
   variants?: string[];
   activeVariant?: number;
@@ -465,6 +470,10 @@ function FlowTimeline({ message }: { message: Message }) {
     memory_shortcut: "Memory",
     personal_fallback: "Personal",
     realtime_shortcut: "Real-time",
+    weather_agent: "Weather Agent",
+    weather_agent_stream: "Weather Agent",
+    news_agent: "News Agent",
+    news_agent_stream: "News Agent",
     instant_mode: "Instant",
     credon_answer: "Brain",
     credon_answer_stream: "Brain",
@@ -541,6 +550,51 @@ function FlowTimeline({ message }: { message: Message }) {
   );
 }
 
+
+function AgentInsightCard({ message }: { message: Message }) {
+  const plan = message.metadata?.agent_plan;
+  const chart = message.metadata?.chart;
+  const tools = message.metadata?.tools;
+  if (!plan && !chart && !tools?.length) return null;
+
+  return (
+    <div className="mt-3 rounded-2xl border border-cyan-400/15 bg-cyan-500/5 p-3 text-xs text-zinc-300">
+      {plan && (
+        <div>
+          <div className="flex items-center justify-between gap-2">
+            <p className="font-semibold text-cyan-200">Credon Manager</p>
+            {plan.intent && <span className="rounded-full bg-zinc-900/80 px-2 py-0.5 text-[10px] uppercase tracking-wide text-zinc-400">{plan.intent}</span>}
+          </div>
+          {plan.agents && plan.agents.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {plan.agents.map((agent) => (
+                <span key={agent} className="rounded-full border border-cyan-400/20 bg-zinc-950/50 px-2 py-1 text-[11px] text-zinc-200">{agent}</span>
+              ))}
+            </div>
+          )}
+          {plan.reason && <p className="mt-2 text-[11px] text-zinc-500">{plan.reason}</p>}
+        </div>
+      )}
+      {tools && tools.length > 0 && (
+        <p className="mt-2 text-[11px] text-zinc-500">Free tools used: {tools.join(", ")}</p>
+      )}
+      {chart?.values && chart.values.length > 0 && (
+        <div className="mt-3">
+          <p className="mb-2 text-[11px] font-medium text-zinc-400">{chart.title || "Chart"}</p>
+          <div className="flex h-24 items-end gap-1.5 rounded-xl border border-zinc-800/80 bg-zinc-950/45 px-2 py-2">
+            {chart.values.slice(0, 12).map((value, idx) => (
+              <div key={`${chart.labels?.[idx] || idx}-${idx}`} className="flex flex-1 flex-col items-center gap-1">
+                <div className="w-full rounded-t bg-linear-to-t from-cyan-500 to-blue-400" style={{ height: `${Math.max(4, Math.min(100, value))}%` }} title={`${chart.labels?.[idx] || idx}: ${value}${chart.unit || ""}`} />
+                <span className="text-[9px] text-zinc-600">{chart.labels?.[idx] || idx + 1}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─────────────────────────── Image Grid ─────────────────────────── */
 
 function ImageGrid({ images }: { images: ImageResult[] }) {
@@ -596,7 +650,7 @@ function ImageGrid({ images }: { images: ImageResult[] }) {
 
 /* ─────────────────────────── Settings Modal ─────────────────────────── */
 
-function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setDeepThink, codeMode, setCodeMode, isGuest, onRequireLogin, onDownloadCurrentChat, onDownloadAllChats, onPreviewCurrentChat, onPreviewAllChats, onPreviewSessionPdf, onDownloadSessionPdf, recentSessions, fcmStatus, onEnableNotifications }: {
+function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setDeepThink, codeMode, setCodeMode, appearance, setAppearance, fontScale, setFontScale, isGuest, onRequireLogin, onDownloadCurrentChat, onDownloadAllChats, onPreviewCurrentChat, onPreviewAllChats, onPreviewSessionPdf, onDownloadSessionPdf, recentSessions, fcmStatus, onEnableNotifications }: {
   open: boolean;
   onClose: () => void;
   webSearch: boolean;
@@ -605,6 +659,10 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
   setDeepThink: (v: boolean) => void;
   codeMode: boolean;
   setCodeMode: (v: boolean) => void;
+  appearance: "dark" | "midnight" | "contrast";
+  setAppearance: (v: "dark" | "midnight" | "contrast") => void;
+  fontScale: "compact" | "comfortable" | "large";
+  setFontScale: (v: "compact" | "comfortable" | "large") => void;
   isGuest: boolean;
   onRequireLogin: (feature: "web-search" | "deep-think" | "code-mode") => void;
   onDownloadCurrentChat: () => void;
@@ -730,6 +788,36 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
             >
               <span className={`block w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${codeMode ? "translate-x-5.5" : "translate-x-0.5"}`} />
             </button>
+          </div>
+
+
+          <div className="rounded-xl border border-zinc-700/50 bg-zinc-900/40 p-3 space-y-3">
+            <div>
+              <p className="text-sm font-medium text-zinc-200">Appearance</p>
+              <p className="text-xs text-zinc-500">Personalize CredonAI without changing the answer engine.</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <select
+                value={appearance}
+                onChange={(e) => setAppearance(e.target.value as "dark" | "midnight" | "contrast")}
+                className="rounded-lg border border-zinc-700/60 bg-zinc-800/70 px-3 py-2 text-xs text-zinc-100 outline-none"
+                title="Theme"
+              >
+                <option value="dark">Dark cyan</option>
+                <option value="midnight">Midnight blue</option>
+                <option value="contrast">High contrast</option>
+              </select>
+              <select
+                value={fontScale}
+                onChange={(e) => setFontScale(e.target.value as "compact" | "comfortable" | "large")}
+                className="rounded-lg border border-zinc-700/60 bg-zinc-800/70 px-3 py-2 text-xs text-zinc-100 outline-none"
+                title="Answer font size"
+              >
+                <option value="compact">Compact font</option>
+                <option value="comfortable">Comfortable font</option>
+                <option value="large">Large font</option>
+              </select>
+            </div>
           </div>
 
           <div className={`rounded-xl border px-3 py-2 ${masterMode ? "border-cyan-500/35 bg-cyan-500/10" : "border-zinc-700/50 bg-zinc-900/40"}`}>
@@ -1473,6 +1561,8 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   const [feedbackTarget, setFeedbackTarget] = useState<number | null>(null);
   const [feedbackBusy, setFeedbackBusy] = useState(false);
   const [fcmStatus, setFcmStatus] = useState("Checking FCM readiness...");
+  const [geoPoint, setGeoPoint] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
 
   /* ── Model & settings ── */
   const [, setModels] = useState<ModelInfo[]>([]);
@@ -1491,6 +1581,14 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   const [codeMode, setCodeMode] = useState(() => {
     if (typeof window === "undefined") return false;
     return localStorage.getItem("credon-code-mode") === "1";
+  });
+  const [appearance, setAppearanceState] = useState<"dark" | "midnight" | "contrast">(() => {
+    if (typeof window === "undefined") return "dark";
+    return (localStorage.getItem("credon-appearance") as "dark" | "midnight" | "contrast" | null) ?? "dark";
+  });
+  const [fontScale, setFontScaleState] = useState<"compact" | "comfortable" | "large">(() => {
+    if (typeof window === "undefined") return "comfortable";
+    return (localStorage.getItem("credon-font-scale") as "compact" | "comfortable" | "large" | null) ?? "comfortable";
   });
   const [replyTo, setReplyTo] = useState<{ text: string; index: number } | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -1528,10 +1626,29 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
 
   const uid = user?.uid ?? localUserId;
   const sessionStorageKey = `credon-active-session:${uid}`;
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("geolocation" in navigator)) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setGeoPoint({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+      () => setGeoPoint(null),
+      { enableHighAccuracy: false, timeout: 3500, maximumAge: 30 * 60 * 1000 }
+    );
+  }, []);
   const displayName = user?.displayName ?? user?.email?.split("@")[0] ?? "Guest";
   const isEmptyChat = messages.length === 1 && messages[0].text === GREET;
   const allModesActive = !isGuest && useWeb && deepThink && codeMode && hasUserSentMessage;
   const browserSupportsNativeShare = typeof window !== "undefined" && typeof navigator !== "undefined" && "share" in navigator;
+  const setAppearance = (value: "dark" | "midnight" | "contrast") => {
+    setAppearanceState(value);
+    if (typeof window !== "undefined") localStorage.setItem("credon-appearance", value);
+  };
+  const setFontScale = (value: "compact" | "comfortable" | "large") => {
+    setFontScaleState(value);
+    if (typeof window !== "undefined") localStorage.setItem("credon-font-scale", value);
+  };
+  const shellClass = appearance === "contrast" ? "bg-black text-white" : appearance === "midnight" ? "bg-[#050816] text-white" : "bg-[#07080a] text-white";
+  const answerFontClass = fontScale === "large" ? "[--answer-size:16px]" : fontScale === "compact" ? "[--answer-size:13px]" : "[--answer-size:15px]";
 
   useEffect(() => {
     // Guests should still get the resilient answer pipeline: Credon Brain → local model → DuckDuckGo web fallback.
@@ -1953,6 +2070,8 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
           deep_think: deepThink,
           code_mode: isGuest ? false : codeMode,
           reply_to: replyContext || undefined,
+          latitude: geoPoint?.latitude,
+          longitude: geoPoint?.longitude,
         }),
         signal: controller.signal,
       });
@@ -2064,9 +2183,9 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               setThinkingStage(null);
               setLiveThinking("");
 
-              // Capture routing metadata for FlowTimeline
-              if (evt?.metadata?.routing) {
-                accMetadata = { ...accMetadata, routing: evt.metadata.routing };
+              // Capture routing + agent metadata for FlowTimeline and structured cards
+              if (evt?.metadata && typeof evt.metadata === "object") {
+                accMetadata = { ...accMetadata, ...evt.metadata };
               }
 
               const maybeEvaluator = evt?.metadata?.evaluator;
@@ -2263,6 +2382,41 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       e.preventDefault();
       if (query.trim() && !loading) void send(query);
     }
+  };
+
+  const speakAnswer = (idx: number, text: string) => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    if (speakingIndex === idx) {
+      window.speechSynthesis.cancel();
+      setSpeakingIndex(null);
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text.replace(/```[\s\S]*?```/g, " code block "));
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.onend = () => setSpeakingIndex(null);
+    utterance.onerror = () => setSpeakingIndex(null);
+    setSpeakingIndex(idx);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const renameChat = async (sessionId: string, currentPreview: string) => {
+    const next = window.prompt("Rename chat", currentPreview || "New conversation");
+    if (!next?.trim()) return;
+    setSessions((prev) => prev.map((s) => s.session_id === sessionId ? { ...s, preview: next.trim() } : s));
+    await fetch(`${API}/api/v1/chats/${uid}/${sessionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ preview: next.trim() }),
+    });
+  };
+
+  const deleteChat = async (sessionId: string) => {
+    if (!window.confirm("Delete this chat history?")) return;
+    setSessions((prev) => prev.filter((s) => s.session_id !== sessionId));
+    if (currentSession === sessionId) newChat();
+    await fetch(`${API}/api/v1/chats/${uid}/${sessionId}`, { method: "DELETE" });
   };
 
   const copyText = (index: number, text: string) => {
@@ -2530,7 +2684,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   }, [sessions]);
 
   return (
-    <div className="h-dvh flex bg-[#07080a] text-white overflow-hidden ambient-grid">
+    <div className={`h-dvh flex overflow-hidden ambient-grid ${shellClass} ${answerFontClass}`}>
       {sidebarOpen && <div className="fixed inset-0 bg-black/60 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
       <SettingsModal
@@ -2552,6 +2706,10 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
           setCodeMode(v);
           if (typeof window !== "undefined") localStorage.setItem("credon-code-mode", v ? "1" : "0");
         }}
+        appearance={appearance}
+        setAppearance={setAppearance}
+        fontScale={fontScale}
+        setFontScale={setFontScale}
         isGuest={isGuest}
         onRequireLogin={(feature) => setLoginPrompt(feature)}
         onDownloadCurrentChat={downloadCurrentChatPdf}
@@ -2606,13 +2764,17 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               <p className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider px-2 mb-1.5">{label}</p>
               <div className="space-y-0.5">
                 {items.map((s) => (
-                  <button key={s.session_id} type="button" onClick={() => { stopGeneration(); setCurrentSession(s.session_id); setSidebarOpen(false); }}
-                    className={`sidebar-item w-full text-left rounded-xl px-3 py-2.5 text-sm transition truncate flex items-center gap-2 ${currentSession === s.session_id ? "bg-cyan-500/10 text-white border border-cyan-500/20" : "text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200 border border-transparent"}`}>
-                    <svg className="w-4 h-4 shrink-0 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
-                    </svg>
-                    <span className="truncate">{s.preview || "New conversation"}</span>
-                  </button>
+                  <div key={s.session_id} className={`sidebar-item group rounded-xl border transition ${currentSession === s.session_id ? "bg-cyan-500/10 text-white border-cyan-500/20" : "text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200 border-transparent"}`}>
+                    <button type="button" onClick={() => { stopGeneration(); setCurrentSession(s.session_id); setSidebarOpen(false); }} className="w-full text-left px-3 pt-2.5 pb-1.5 text-sm truncate flex items-center gap-2">
+                      <svg className="w-4 h-4 shrink-0 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" /></svg>
+                      <span className="truncate">{s.preview || "New conversation"}</span>
+                    </button>
+                    <div className="flex gap-1 px-3 pb-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition">
+                      <button type="button" onClick={() => { void renameChat(s.session_id, s.preview); }} className="text-[10px] text-zinc-500 hover:text-cyan-300">Rename</button>
+                      <span className="text-[10px] text-zinc-700">•</span>
+                      <button type="button" onClick={() => { void deleteChat(s.session_id); }} className="text-[10px] text-zinc-500 hover:text-rose-300">Delete</button>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
@@ -2780,7 +2942,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                         );
                       })()}
                       {m.role === "assistant" && m.text !== GREET ? (
-                        <div className="prose prose-invert prose-sm max-w-none text-[14px] sm:text-[15px] leading-relaxed [&_pre]:bg-zinc-900/80 [&_pre]:border [&_pre]:border-zinc-700/30 [&_pre]:rounded-xl [&_pre]:p-3 [&_pre]:overflow-x-auto [&_code]:text-cyan-300 [&_code]:text-[13px] [&_a]:text-cyan-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-cyan-500/30 hover:[&_a]:decoration-cyan-500 [&_h1]:text-xl [&_h1]:tracking-tight [&_h2]:text-lg [&_h2]:tracking-tight [&_h3]:text-base [&_h1]:font-bold [&_h2]:font-semibold [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_li]:my-1 [&_blockquote]:border-l-2 [&_blockquote]:border-cyan-500/40 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-zinc-300 [&_table]:border-collapse [&_th]:border [&_th]:border-zinc-700 [&_th]:px-3 [&_th]:py-1.5 [&_th]:bg-zinc-800 [&_td]:border [&_td]:border-zinc-700 [&_td]:px-3 [&_td]:py-1.5 [&_hr]:border-zinc-700/50 [&_strong]:text-zinc-100 [&_strong]:font-semibold [&_strong]:bg-cyan-400/10 [&_strong]:px-1.5 [&_strong]:py-0.5 [&_strong]:rounded-md [&_li]:marker:text-cyan-300 [&_p:first-of-type]:text-zinc-100 [&_p:first-of-type]:font-medium">
+                        <div className="prose prose-invert prose-sm max-w-none text-[var(--answer-size)] leading-relaxed [&_pre]:bg-zinc-900/80 [&_pre]:border [&_pre]:border-zinc-700/30 [&_pre]:rounded-xl [&_pre]:p-3 [&_pre]:overflow-x-auto [&_code]:text-cyan-300 [&_code]:text-[13px] [&_a]:text-cyan-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-cyan-500/30 hover:[&_a]:decoration-cyan-500 [&_h1]:text-xl [&_h1]:tracking-tight [&_h2]:text-lg [&_h2]:tracking-tight [&_h3]:text-base [&_h1]:font-bold [&_h2]:font-semibold [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_li]:my-1 [&_blockquote]:border-l-2 [&_blockquote]:border-cyan-500/40 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-zinc-300 [&_table]:border-collapse [&_th]:border [&_th]:border-zinc-700 [&_th]:px-3 [&_th]:py-1.5 [&_th]:bg-zinc-800 [&_td]:border [&_td]:border-zinc-700 [&_td]:px-3 [&_td]:py-1.5 [&_hr]:border-zinc-700/50 [&_strong]:text-zinc-100 [&_strong]:font-semibold [&_strong]:bg-cyan-400/10 [&_strong]:px-1.5 [&_strong]:py-0.5 [&_strong]:rounded-md [&_li]:marker:text-cyan-300 [&_p:first-of-type]:text-zinc-100 [&_p:first-of-type]:font-medium">
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm, remarkMath]}
                             rehypePlugins={[rehypeKatex]}
@@ -2844,6 +3006,10 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                     {/* Flow timeline */}
                     {m.role === "assistant" && !m.streaming && m.text !== GREET && (
                       <FlowTimeline message={m} />
+                    )}
+
+                    {m.role === "assistant" && !m.streaming && m.text !== GREET && (
+                      <AgentInsightCard message={m} />
                     )}
 
                     {/* Confidence */}
@@ -2922,6 +3088,9 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                             <svg className="w-4 h-4" viewBox="0 0 24 24" fill={m.feedback === "down" ? "currentColor" : "none"} stroke="currentColor" strokeWidth={m.feedback === "down" ? 0 : 2}>
                               <path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10zM17 2h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17" />
                             </svg>
+                          </button>
+                          <button type="button" onClick={() => speakAnswer(i, m.text)} className={`text-zinc-600 hover:text-cyan-300 transition p-1.5 rounded-lg hover:bg-zinc-800/60 ${speakingIndex === i ? "text-cyan-300" : ""}`} title="Read aloud with browser text-to-speech">
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5L6 9H3v6h3l5 4V5z" /><path strokeLinecap="round" d="M15.54 8.46a5 5 0 010 7.07M18.36 5.64a9 9 0 010 12.72" /></svg>
                           </button>
                           {/* Copy */}
                           <button type="button" onClick={() => copyText(i, m.text)} className="text-zinc-600 hover:text-zinc-300 transition p-1.5 rounded-lg hover:bg-zinc-800/60" title="Copy">

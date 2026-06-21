@@ -18,7 +18,7 @@ from app.models.schemas import (
     NotificationTokenRequest,
     NotificationTestRequest,
 )
-from app.services.chat_store import get_transcript, list_sessions, save_message
+from app.services.chat_store import delete_session, get_transcript, list_sessions, rename_session, save_message
 from app.services.memory_answer import (
     memory_based_answer,
     personal_query_fallback,
@@ -48,6 +48,7 @@ from app.services.answer_validator import (
 )
 from app.services.push_store import save_user_push_token
 from app.services.push_notify import send_test_push
+from app.services.free_agents import manager_plan, news_answer, weather_answer
 from app.utils.language import detect_language
 from time import perf_counter, time
 
@@ -552,7 +553,7 @@ def _choose_internal_model(query: str, use_web: bool) -> str:
 
 def _is_visual_query_local(query: str) -> bool:
     q = query.lower()
-    return any(
+    explicit_visual = any(
         marker in q
         for marker in [
             "image",
@@ -564,6 +565,8 @@ def _is_visual_query_local(query: str) -> bool:
             "screenshot",
         ]
     )
+    educational_visual = bool(re.search(r"\b(explain|what is|overview|compare|history of|types of)\b", q)) and len(q.split()) >= 3
+    return explicit_visual or educational_visual
 
 
 def _clean_answer(text: str) -> str:
@@ -1025,6 +1028,8 @@ def chat(payload: ChatRequest) -> ChatResponse:
         news_top_n=_safe_int(intent_meta.get("news_top_n", 0), 0),
     )
 
+    agent_plan = manager_plan(cleaned_query, use_web=payload.use_web, deep_think=payload.deep_think, code_mode=payload.code_mode)
+
     followup_mode = (
         _is_contextual_followup(cleaned_query)
         or _is_ambiguous_short_followup(cleaned_query)
@@ -1158,6 +1163,22 @@ def chat(payload: ChatRequest) -> ChatResponse:
             latency_ms=elapsed,
             metadata={"routing": {"selected_route": "personal_fallback", "reason": "profile_query", "score": 1.0}},
         )
+
+    news = news_answer(cleaned_query, target_language, max_items=_safe_int(intent_meta.get("news_top_n", 6), 6) or 6)
+    if news:
+        news_reply, news_sources, news_meta = news
+        metadata = {"routing": {"selected_route": "news_agent", "reason": "free_gdelt_news", "score": 1.0}, "agent_plan": agent_plan, **news_meta}
+        save_message(payload.user_id, payload.session_id, "assistant", news_reply, confidence="high", sources=news_sources, metadata=metadata)
+        elapsed = int((perf_counter() - start) * 1000)
+        return ChatResponse(answer=news_reply, language=target_language, confidence="high", sources=[Source(title=s["title"], url=s["url"]) for s in news_sources], images=[], suggestions=["Explain headline 1 simply", "Show only India-related updates", "Give a timeline"], thinking="News Agent used GDELT free API.", latency_ms=elapsed, metadata=metadata)
+
+    weather = weather_answer(cleaned_query, target_language, payload.latitude, payload.longitude)
+    if weather:
+        weather_reply, weather_sources, weather_meta = weather
+        metadata = {"routing": {"selected_route": "weather_agent", "reason": "free_open_meteo", "score": 1.0}, "agent_plan": agent_plan, **weather_meta}
+        save_message(payload.user_id, payload.session_id, "assistant", weather_reply, confidence="high", sources=weather_sources, metadata=metadata)
+        elapsed = int((perf_counter() - start) * 1000)
+        return ChatResponse(answer=weather_reply, language=target_language, confidence="high", sources=[Source(title=s["title"], url=s["url"]) for s in weather_sources], images=[], suggestions=["Show hourly rain chances", "What about tomorrow?"], thinking="Weather Agent used Open-Meteo free API.", latency_ms=elapsed, metadata=metadata)
 
     # Real-time queries (time, date, day) — answered instantly from system clock
     if _is_realtime_query(cleaned_query):
@@ -1346,6 +1367,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
         },
         "mode": {"code_mode": code_mode_active, "master_mode": master_mode_active},
         "intent": intent_meta,
+        "agent_plan": agent_plan,
         "answer_arbitration": {"chosen": arbitration_source},
         "evaluator": eval_diag,
     }
@@ -1360,7 +1382,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
     # Image search for visual queries
     images: list[ImageResult] = []
     if use_web and _is_visual_query_local(cleaned_query):
-        raw_images = search_images(cleaned_query, max_results=4)
+        raw_images = search_images(cleaned_query, max_results=3)
         images = [ImageResult(**img) for img in raw_images]
 
     elapsed = int((perf_counter() - start) * 1000)
@@ -1417,6 +1439,8 @@ def chat_stream(payload: ChatRequest):
         detail_pref=str(intent_meta.get("detail_preference", "default")),
         news_top_n=_safe_int(intent_meta.get("news_top_n", 0), 0),
     )
+
+    agent_plan = manager_plan(cleaned_query, use_web=payload.use_web, deep_think=payload.deep_think, code_mode=payload.code_mode)
 
     followup_mode = (
         _is_contextual_followup(cleaned_query)
@@ -1541,6 +1565,32 @@ def chat_stream(payload: ChatRequest):
             yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed, 'metadata': {'routing': {'selected_route': 'personal_fallback_stream', 'reason': 'profile_query', 'score': 1.0}}})}\n\n"
 
         return StreamingResponse(_personal_events(), media_type="text/event-stream")
+
+    news = news_answer(cleaned_query, target_language, max_items=_safe_int(intent_meta.get("news_top_n", 6), 6) or 6)
+    if news:
+        news_reply, news_sources, news_meta = news
+        metadata = {"routing": {"selected_route": "news_agent_stream", "reason": "free_gdelt_news", "score": 1.0}, "agent_plan": agent_plan, **news_meta}
+        save_message(payload.user_id, payload.session_id, "assistant", news_reply, confidence="high", sources=news_sources, metadata=metadata)
+        elapsed = int((perf_counter() - start) * 1000)
+        def _news_events():
+            yield f"data: {_json.dumps({'type': 'status', 'stage': 'searching', 'message': 'News Agent is checking live sources...'})}\n\n"
+            yield f"data: {_json.dumps({'type': 'sources', 'sources': news_sources, 'confidence': 'high', 'images': []})}\n\n"
+            yield f"data: {_json.dumps({'type': 'token', 'content': news_reply})}\n\n"
+            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': news_sources, 'images': [], 'suggestions': ['Explain headline 1 simply', 'Show only India-related updates', 'Give a timeline'], 'latency_ms': elapsed, 'metadata': metadata})}\n\n"
+        return StreamingResponse(_news_events(), media_type="text/event-stream")
+
+    weather = weather_answer(cleaned_query, target_language, payload.latitude, payload.longitude)
+    if weather:
+        weather_reply, weather_sources, weather_meta = weather
+        metadata = {"routing": {"selected_route": "weather_agent_stream", "reason": "free_open_meteo", "score": 1.0}, "agent_plan": agent_plan, **weather_meta}
+        save_message(payload.user_id, payload.session_id, "assistant", weather_reply, confidence="high", sources=weather_sources, metadata=metadata)
+        elapsed = int((perf_counter() - start) * 1000)
+        def _weather_events():
+            yield f"data: {_json.dumps({'type': 'status', 'stage': 'searching', 'message': 'Weather Agent is checking live forecast...'})}\n\n"
+            yield f"data: {_json.dumps({'type': 'sources', 'sources': weather_sources, 'confidence': 'high', 'images': []})}\n\n"
+            yield f"data: {_json.dumps({'type': 'token', 'content': weather_reply})}\n\n"
+            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': weather_sources, 'images': [], 'suggestions': ['Show hourly rain chances', 'What about tomorrow?'], 'latency_ms': elapsed, 'metadata': metadata})}\n\n"
+        return StreamingResponse(_weather_events(), media_type="text/event-stream")
 
     # Real-time queries (time, date, day) — instant from system clock
     if _is_realtime_query(cleaned_query):
@@ -1728,7 +1778,7 @@ def chat_stream(payload: ChatRequest):
         # Image search for visual queries
         images_payload: list[dict[str, str]] = []
         if use_web and _is_visual_query_local(cleaned_query):
-            raw_images = search_images(cleaned_query, max_results=4)
+            raw_images = search_images(cleaned_query, max_results=3)
             images_payload = raw_images
 
         # Send sources + images early
@@ -1775,6 +1825,7 @@ def chat_stream(payload: ChatRequest):
                 "routing": {"selected_route": "model_generation_stream", "score": round(quick_score, 4), "reason": quick_reason},
                 "mode": {"code_mode": code_mode_active, "master_mode": master_mode_active},
                 "intent": intent_meta,
+                "agent_plan": agent_plan,
                 "evaluator": eval_diag,
             },
         )
@@ -1791,7 +1842,7 @@ def chat_stream(payload: ChatRequest):
             },
         )
         elapsed = int((perf_counter() - start) * 1000)
-        yield f"data: {_json.dumps({'type': 'done', 'latency_ms': elapsed, 'confidence': adj_confidence, 'suggestions': suggestions, 'metadata': {'routing': {'selected_route': 'model_generation_stream', 'score': round(quick_score, 4), 'reason': quick_reason}, 'mode': {'code_mode': code_mode_active, 'master_mode': master_mode_active}, 'intent': intent_meta, 'evaluator': eval_diag}})}\n\n"
+        yield f"data: {_json.dumps({'type': 'done', 'latency_ms': elapsed, 'confidence': adj_confidence, 'suggestions': suggestions, 'metadata': {'routing': {'selected_route': 'model_generation_stream', 'score': round(quick_score, 4), 'reason': quick_reason}, 'mode': {'code_mode': code_mode_active, 'master_mode': master_mode_active}, 'intent': intent_meta, 'agent_plan': agent_plan, 'evaluator': eval_diag}})}\n\n"
 
     return StreamingResponse(_stream_events(), media_type="text/event-stream")
 
@@ -1841,6 +1892,18 @@ def get_user_transcript(user_id: str, session_id: str) -> ChatTranscriptResponse
             metadata=meta,
         ))
     return ChatTranscriptResponse(user_id=user_id, session_id=session_id, messages=messages)
+
+
+@router.patch("/chats/{user_id}/{session_id}")
+def rename_user_session(user_id: str, session_id: str, payload: dict[str, str]) -> dict[str, bool]:
+    rename_session(user_id, session_id, (payload.get("preview") or "New conversation").strip()[:120])
+    return {"ok": True}
+
+
+@router.delete("/chats/{user_id}/{session_id}")
+def delete_user_session(user_id: str, session_id: str) -> dict[str, bool]:
+    delete_session(user_id, session_id)
+    return {"ok": True}
 
 
 @router.post("/feedback")
