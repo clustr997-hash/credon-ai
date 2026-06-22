@@ -2325,7 +2325,12 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         body: JSON.stringify({
           user_id: uid,
           session_id: currentSession,
-          query: `${backendQuery}\n\n[Credon UX preferences] Product mode: ${productMode}. Answer style: ${answerStyle}. Automatically choose the best response layout (table/timeline/checklist/code/report) when useful.`,
+          query: backendQuery,
+          metadata: {
+            product_mode: productMode,
+            answer_style: answerStyle,
+            layout_preference: "auto",
+          },
           language: "auto",
           model: selectedModel || undefined,
           use_web: useWeb,
@@ -2579,7 +2584,12 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
             body: JSON.stringify({
               user_id: uid,
               session_id: currentSession,
-              query: `${backendQuery}\n\n[Credon UX preferences] Product mode: ${productMode}. Answer style: ${answerStyle}.`,
+              query: backendQuery,
+              metadata: {
+                product_mode: productMode,
+                answer_style: answerStyle,
+                layout_preference: "auto",
+              },
               language: "auto",
               model: selectedModel || undefined,
               use_web: true,
