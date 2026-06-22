@@ -136,9 +136,135 @@ def _image_result_from_item(item: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+_IMAGE_UA = "CredonAI/1.0 (https://credonai.web.app; image-search)"
+
+
 def search_images(query: str, max_results: int = 4) -> list[dict[str, Any]]:
-    """Search for source-linked images, preferring license-safe providers when possible."""
-    return _ddg_image_search(query, max_results)
+    """Search for source-linked images, preferring license-safe providers when possible.
+
+    DuckDuckGo image search is frequently rate-limited/blocked from server IPs, so we
+    fall back to keyless providers (Openverse, then Wikimedia Commons) to guarantee
+    image cards render instead of an empty "could not fetch" message.
+    """
+    results = _ddg_image_search(query, max_results)
+    if len(results) >= max_results:
+        return results
+
+    seen = {str(r.get("image_url") or "") for r in results}
+    for provider in (_openverse_image_search, _wikimedia_image_search):
+        if len(results) >= max_results:
+            break
+        for result in provider(query, max_results):
+            key = str(result.get("image_url") or "")
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            results.append(result)
+            if len(results) >= max_results:
+                break
+    return results[:max_results]
+
+
+def _openverse_image_search(query: str, max_results: int) -> list[dict[str, Any]]:
+    """Keyless CC-licensed image search via the Openverse API."""
+    try:
+        resp = requests.get(
+            "https://api.openverse.org/v1/images/",
+            params={"q": query, "page_size": max(max_results, 4), "mature": "false"},
+            headers={"User-Agent": _IMAGE_UA},
+            timeout=10,
+        )
+        if not resp.ok:
+            return []
+        payload = cast(dict[str, Any], resp.json())
+    except Exception as e:
+        print(f"[Credon] Openverse image search failed: {e}")
+        return []
+
+    results: list[dict[str, Any]] = []
+    for item in cast(list[Any], payload.get("results") or []):
+        if not isinstance(item, dict):
+            continue
+        entry = cast(dict[str, Any], item)
+        img_url = str(entry.get("url") or "")
+        if not img_url:
+            continue
+        source_page = str(entry.get("foreign_landing_url") or entry.get("url") or "")
+        provider = str(entry.get("source") or entry.get("provider") or "Openverse").title()
+        license_name = str(entry.get("license") or "").upper()
+        results.append({
+            "image_url": img_url,
+            "thumbnail": str(entry.get("thumbnail") or img_url),
+            "title": str(entry.get("title") or query),
+            "source_url": source_page,
+            "source_name": f"Openverse / {provider}",
+            "license_safe_source": True,
+            "license_verified": bool(license_name),
+            "license_note": (
+                f"Openverse result, license {license_name}. Open the source to confirm exact terms."
+                if license_name
+                else "Openverse result; open the source to confirm exact terms."
+            ),
+            "is_reference": not bool(license_name),
+        })
+        if len(results) >= max_results:
+            break
+    return results
+
+
+def _wikimedia_image_search(query: str, max_results: int) -> list[dict[str, Any]]:
+    """Keyless image search over Wikimedia Commons files."""
+    try:
+        resp = requests.get(
+            "https://commons.wikimedia.org/w/api.php",
+            params={
+                "action": "query",
+                "generator": "search",
+                "gsrsearch": query,
+                "gsrnamespace": "6",
+                "gsrlimit": str(max(max_results, 4)),
+                "prop": "imageinfo",
+                "iiprop": "url",
+                "iiurlwidth": "640",
+                "format": "json",
+            },
+            headers={"User-Agent": _IMAGE_UA},
+            timeout=10,
+        )
+        if not resp.ok:
+            return []
+        payload = cast(dict[str, Any], resp.json())
+    except Exception as e:
+        print(f"[Credon] Wikimedia image search failed: {e}")
+        return []
+
+    pages = cast(dict[str, Any], cast(dict[str, Any], payload.get("query") or {}).get("pages") or {})
+    results: list[dict[str, Any]] = []
+    for page in pages.values():
+        if not isinstance(page, dict):
+            continue
+        info_list = cast(list[Any], page.get("imageinfo") or [])
+        if not info_list or not isinstance(info_list[0], dict):
+            continue
+        info = cast(dict[str, Any], info_list[0])
+        img_url = str(info.get("url") or "")
+        if not img_url or not re.search(r"\.(jpg|jpeg|png|gif|webp)$", img_url, re.IGNORECASE):
+            continue
+        title = str(page.get("title") or "").removeprefix("File:")
+        results.append({
+            "image_url": img_url,
+            "thumbnail": str(info.get("thumburl") or img_url),
+            "title": title or query,
+            "source_url": str(info.get("descriptionurl") or img_url),
+            "source_name": "Wikimedia Commons",
+            "license_safe_source": True,
+            "license_verified": False,
+            "license_note": "Wikimedia Commons file; open the source to confirm the exact license.",
+            "is_reference": False,
+        })
+        if len(results) >= max_results:
+            break
+    return results
 
 
 def _ddg_images(ddgs: DDGS, query: str, max_results: int) -> list[dict[str, Any]]:
