@@ -27,6 +27,11 @@ class ImageResult(BaseModel):
     thumbnail: str = ""
     title: str = ""
     source_url: str = ""
+    source_name: str = ""
+    license_safe_source: bool = False
+    license_verified: bool = False
+    license_note: str = ""
+    is_reference: bool = True
 
 
 class ChatResponse(BaseModel):

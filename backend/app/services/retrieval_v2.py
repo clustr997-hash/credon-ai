@@ -14,7 +14,7 @@ import json
 import os
 import re
 from typing import Any, cast
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 
 import requests
 import trafilatura
@@ -90,30 +90,90 @@ def _extract_parallel(urls: list[str], max_chars: int = 800) -> dict[str, str]:
     return result
 
 
-def search_images(query: str, max_results: int = 4) -> list[dict[str, str]]:
-    """Search for images via DDG only (free path)."""
+_LICENSE_SAFE_IMAGE_DOMAINS: dict[str, str] = {
+    "commons.wikimedia.org": "Wikimedia Commons",
+    "upload.wikimedia.org": "Wikimedia Commons",
+    "unsplash.com": "Unsplash",
+    "images.unsplash.com": "Unsplash",
+    "pexels.com": "Pexels",
+    "images.pexels.com": "Pexels",
+    "pixabay.com": "Pixabay",
+    "cdn.pixabay.com": "Pixabay",
+}
+
+
+def _image_source_label(source_url: str, image_url: str) -> str:
+    host = (urlparse(source_url or image_url).hostname or "").lower().removeprefix("www.")
+    for domain, label in _LICENSE_SAFE_IMAGE_DOMAINS.items():
+        if host == domain or host.endswith(f".{domain}"):
+            return label
+    return ""
+
+
+def _image_result_from_item(item: dict[str, Any]) -> dict[str, Any] | None:
+    img_url = str(item.get("image") or "")
+    if not img_url:
+        return None
+    source = str(item.get("url") or item.get("source") or "")
+    label = _image_source_label(source, img_url)
+    license_safe_source = bool(label)
+    license_verified = False
+    license_note = (
+        f"Preferred source: {label}; license still not verified in-app, so open the source to confirm exact terms."
+        if license_safe_source
+        else "License not verified by search; treat as a reference image and open the source to check rights."
+    )
+    return {
+        "image_url": img_url,
+        "thumbnail": str(item.get("thumbnail") or img_url),
+        "title": str(item.get("title") or ""),
+        "source_url": source or img_url,
+        "source_name": label or str(item.get("source") or ""),
+        "license_safe_source": license_safe_source,
+        "license_verified": license_verified,
+        "license_note": license_note,
+        "is_reference": not license_verified,
+    }
+
+
+def search_images(query: str, max_results: int = 4) -> list[dict[str, Any]]:
+    """Search for source-linked images, preferring license-safe providers when possible."""
     return _ddg_image_search(query, max_results)
 
 
-def _ddg_image_search(query: str, max_results: int) -> list[dict[str, str]]:
-    """DuckDuckGo image search."""
+def _ddg_images(ddgs: DDGS, query: str, max_results: int) -> list[dict[str, Any]]:
+    """Call DDG images with license parameters when the installed library supports them."""
+    try:
+        return list(ddgs.images(query, max_results=max_results, license_image="ShareCommercially"))
+    except TypeError:
+        return list(ddgs.images(query, max_results=max_results))
+
+
+def _ddg_image_search(query: str, max_results: int) -> list[dict[str, Any]]:
+    """DuckDuckGo image search with source preference and rights metadata."""
     try:
         ddgs = DDGS()
-        raw = list(ddgs.images(query, max_results=max_results))
-        results: list[dict[str, str]] = []
-        for item in raw:
-            img_url = item.get("image") or ""
-            thumb = item.get("thumbnail") or img_url
-            title = item.get("title") or ""
-            source = item.get("url") or ""
-            if img_url:
-                results.append({
-                    "image_url": img_url,
-                    "thumbnail": thumb,
-                    "title": title,
-                    "source_url": source,
-                })
-        return results
+        safe_sites = " OR ".join(f"site:{domain}" for domain in ["commons.wikimedia.org", "unsplash.com", "pexels.com", "pixabay.com"])
+        searches = [f"{query} ({safe_sites})", query]
+        results: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for search_query in searches:
+            if len(results) >= max_results:
+                break
+            raw = _ddg_images(ddgs, search_query, max(max_results * 2, 8))
+            for item in raw:
+                result = _image_result_from_item(item)
+                if not result:
+                    continue
+                key = str(result.get("image_url") or "")
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                results.append(result)
+                if len(results) >= max_results:
+                    break
+        results.sort(key=lambda item: (not bool(item.get("license_safe_source")), str(item.get("title") or "")))
+        return results[:max_results]
     except Exception:
         return []
 
