@@ -202,9 +202,8 @@ const LOCAL_TRENDING_PROMPTS = [
   "Explain space technology breakthroughs in simple words",
 ];
 
-const PRODUCT_MODES = ["Student", "Developer", "Founder", "Researcher", "Business"] as const;
 const ANSWER_STYLES = ["Simple", "Balanced", "Expert", "Research Paper"] as const;
-type ProductMode = typeof PRODUCT_MODES[number];
+type ProductMode = "Student" | "Developer" | "Founder" | "Researcher" | "Business";
 type AnswerStyle = typeof ANSWER_STYLES[number];
 
 
@@ -235,6 +234,16 @@ function randomLocalPrompts(count = 4): string[] {
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
   return pool.slice(0, count);
+}
+
+/** Auto-detect the user's intent persona from their message (replaces the manual chips). */
+function detectProductMode(text: string): ProductMode {
+  const q = text.toLowerCase();
+  if (/```|\b(code|coding|debug|function|bug|api|typescript|javascript|python|react|node|java|sql|programming|algorithm|compile|runtime|stack ?trace|syntax|exception|error)\b/.test(q)) return "Developer";
+  if (/\b(startup|founder|fundrais\w*|investors?|pitch|mvp|revenue|customers?|go[- ]to[- ]market|product[- ]market|monetiz\w*|valuation)\b/.test(q)) return "Founder";
+  if (/\b(research|paper|thesis|dissertation|citations?|literature review|methodology|hypothesis|peer[- ]review\w*|journal|dataset|experiment)\b/.test(q)) return "Researcher";
+  if (/\b(market\w*|company|industry|profit|sales|finance|financial|strategy|competitors?|b2b|enterprise|roi)\b/.test(q)) return "Business";
+  return "Student";
 }
 
 
@@ -2513,6 +2522,9 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       ? `${q}\n\n[Replying to previous answer]: ${replyContext.slice(0, 700)}`
       : q;
 
+    const detectedMode = detectProductMode(q);
+    if (detectedMode !== productMode) setProductMode(detectedMode);
+
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -2525,7 +2537,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
           session_id: currentSession,
           query: backendQuery,
           metadata: {
-            product_mode: productMode,
+            product_mode: detectedMode,
             answer_style: answerStyle,
             layout_preference: "auto",
           },
@@ -2790,7 +2802,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 session_id: currentSession,
                 query: backendQuery,
                 metadata: {
-                  product_mode: productMode,
+                  product_mode: detectedMode,
                   answer_style: answerStyle,
                   layout_preference: "auto",
                 },
@@ -3964,13 +3976,18 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               )}
             </div>
 
-            <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-1" aria-label="Credon modes">
-              <span className="shrink-0 text-[10px] text-zinc-500">Auto detects intent</span>
-              {PRODUCT_MODES.map((mode) => (
-                <button key={mode} type="button" onClick={() => setProductMode(mode)} className={`min-h-9 shrink-0 rounded-full border px-3 text-xs font-medium transition ${productMode === mode ? "border-cyan-500/45 bg-cyan-500/12 text-cyan-200" : "border-zinc-700/60 bg-zinc-900/70 text-zinc-400 hover:border-cyan-500/30 hover:text-zinc-200"}`}>{mode}</button>
-              ))}
-            </div>
-            <div className={`flex min-h-16 gap-1.5 sm:gap-2.5 items-end bg-zinc-900/80 border rounded-2xl px-2.5 sm:px-4 py-2.5 sm:py-3 focus-within:border-cyan-500/40 focus-within:shadow-cyan-500/5 transition-all shadow-lg shadow-black/20 ${allModesActive ? "border-cyan-500/45 trinity-glow" : "border-zinc-700/50"}`}>
+            <div className={`flex flex-col gap-2 bg-zinc-900/80 border rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 focus-within:border-cyan-500/40 focus-within:shadow-cyan-500/5 transition-all shadow-lg shadow-black/20 ${allModesActive ? "border-cyan-500/45 trinity-glow" : "border-zinc-700/50"}`}>
+              <textarea
+                ref={inputRef}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Message Credon AI&#8230;"
+                rows={1}
+                className="w-full min-h-[2.75rem] bg-transparent px-1 py-1.5 outline-none text-[15px] placeholder:text-zinc-500 resize-none max-h-48 leading-relaxed"
+              />
+              <div className="flex items-end justify-between gap-2">
+              <div className="flex items-center gap-0.5 sm:gap-1.5">
               {/* Attach file button */}
               <div className="relative shrink-0">
               <button type="button" onClick={() => setInputMenuOpen((prev) => !prev)}
@@ -4079,17 +4096,8 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 </svg>
               </button>
 
-              {/* Textarea */}
-              <textarea
-                ref={inputRef}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Message Credon AI&#8230;"
-                rows={1}
-                className="flex-1 min-w-0 min-h-11 bg-transparent py-3.5 sm:py-4 outline-none text-[15px] sm:text-[15px] placeholder:text-zinc-500 resize-none max-h-40 leading-relaxed"
-              />
-
+              </div>
+              <div className="flex items-center gap-1.5">
               {/* Voice input button */}
               <button
                 type="button"
@@ -4118,6 +4126,8 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                   </svg>
                 </button>
               )}
+              </div>
+              </div>
             </div>
             {uploadingFiles && uploadStatus && (
               <p className="text-center text-[11px] text-cyan-300 mt-1.5 sm:mt-2 flex items-center justify-center gap-1.5">

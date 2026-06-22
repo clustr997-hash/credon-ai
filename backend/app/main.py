@@ -6,7 +6,9 @@ from pathlib import Path
 import os
 import random
 import re
+from datetime import datetime, timedelta, timezone
 from time import time
+from typing import Any, cast
 import requests
 from app.routes.chat import router as chat_router
 from app.routes.ingest import router as ingest_router
@@ -246,6 +248,47 @@ def _question_from_source(title: str, snippet: str) -> str:
     return f"Explain {text} simply"
 
 
+def _wikipedia_trending_prompts() -> list[str]:
+    """Keyless 'most read' topics from the Wikimedia featured feed.
+
+    Works from server IPs (unlike DuckDuckGo), so trending starter prompts stay
+    fresh in production even when web search is blocked.
+    """
+    prompts: list[str] = []
+    deadline = time() + 4.5  # hard cap on total cache-miss latency added here
+    for delta in (1, 2):  # yesterday first; the day before is a rare fallback
+        remaining = deadline - time()
+        if remaining <= 0:
+            break
+        day = (datetime.now(timezone.utc) - timedelta(days=delta)).strftime("%Y/%m/%d")
+        try:
+            resp = requests.get(
+                f"https://en.wikipedia.org/api/rest_v1/feed/featured/{day}",
+                headers={"User-Agent": "CredonAI/1.0 (https://credonai.web.app; trending)"},
+                timeout=min(3.0, remaining),
+            )
+            if not resp.ok:
+                continue
+            articles = cast(list[Any], resp.json().get("mostread", {}).get("articles", []))
+        except Exception:
+            continue
+        for art in articles:
+            if not isinstance(art, dict):
+                continue
+            title = str((art.get("titles", {}) or {}).get("normalized") or art.get("title") or "").replace("_", " ").strip()
+            low = title.lower()
+            if not title or ":" in title or low.startswith("main page") or "deaths in" in low:
+                continue
+            prompt = f"What's the story behind {title} that's trending right now?"
+            if prompt not in prompts:
+                prompts.append(prompt)
+            if len(prompts) >= 12:
+                break
+        if prompts:
+            break
+    return prompts
+
+
 def _trending_web_prompts() -> list[str]:
     cache_key = "global_trending_prompts"
     cached = _SUGGESTIONS_CACHE.get(cache_key)
@@ -258,6 +301,7 @@ def _trending_web_prompts() -> list[str]:
         "latest AI technology trends 2026 students developers business",
     ]
     prompts: list[str] = []
+    prompts.extend(_wikipedia_trending_prompts())
     for query in queries:
         try:
             for src in retrieve_sources(query, max_results=8):
