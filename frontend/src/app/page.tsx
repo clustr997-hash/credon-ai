@@ -1776,7 +1776,6 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   const [productMode, setProductMode] = useState<ProductMode>("Student");
   const [answerStyle, setAnswerStyle] = useState<AnswerStyle>("Balanced");
   const [chatSearch, setChatSearch] = useState("");
-  const [pinnedSessions, setPinnedSessions] = useState<string[]>([]);
   const [listening, setListening] = useState(false);
 
   /* ── Model & settings ── */
@@ -1843,6 +1842,45 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
 
   const uid = user?.uid ?? localUserId;
   const sessionStorageKey = `credon-active-session:${uid}`;
+  const pinnedSessionsStorageKey = `credon-pinned-sessions:${uid}`;
+  const pinnedSessionsStorageKeyRef = useRef(pinnedSessionsStorageKey);
+  const skipPinnedSessionsWriteRef = useRef(false);
+  const [pinnedSessions, setPinnedSessions] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const stored = localStorage.getItem(pinnedSessionsStorageKey);
+      const parsed: unknown = stored ? JSON.parse(stored) : [];
+      return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    if (pinnedSessionsStorageKeyRef.current === pinnedSessionsStorageKey) return;
+    pinnedSessionsStorageKeyRef.current = pinnedSessionsStorageKey;
+    skipPinnedSessionsWriteRef.current = true;
+    if (typeof window === "undefined") {
+      setPinnedSessions([]);
+      return;
+    }
+    try {
+      const stored = localStorage.getItem(pinnedSessionsStorageKey);
+      const parsed: unknown = stored ? JSON.parse(stored) : [];
+      setPinnedSessions(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
+    } catch {
+      setPinnedSessions([]);
+    }
+  }, [pinnedSessionsStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (skipPinnedSessionsWriteRef.current) {
+      skipPinnedSessionsWriteRef.current = false;
+      return;
+    }
+    localStorage.setItem(pinnedSessionsStorageKey, JSON.stringify(pinnedSessions));
+  }, [pinnedSessions, pinnedSessionsStorageKey]);
 
   useEffect(() => {
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) return;
@@ -2759,6 +2797,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   const deleteChat = async (sessionId: string) => {
     if (!window.confirm("Delete this chat history?")) return;
     setSessions((prev) => prev.filter((s) => s.session_id !== sessionId));
+    setPinnedSessions((prev) => prev.filter((id) => id !== sessionId));
     if (currentSession === sessionId) newChat();
     await fetch(`${API}/api/v1/chats/${uid}/${sessionId}`, { method: "DELETE" });
   };
