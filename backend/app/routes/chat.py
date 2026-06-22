@@ -587,15 +587,25 @@ def _image_answer(query: str, count: int, language: str) -> str:
     subject = _image_search_query(query)
     if count > 0:
         return (
-            f"Here are image results for **{subject}**. Open a card to view the source or save the image."
+            f"Here are source-linked reference image cards for **{subject}**. Open each card/source URL to verify image rights before reuse; results from license-friendly sources are preferred when available, but rights are not guaranteed."
             if language == "en"
-            else f"**{subject}** ke image results yahan hain. Source dekhne ya image save karne ke liye card open karo."
+            else f"**{subject}** ke source-linked reference image cards yahan hain. Reuse se pehle har card/source URL open karke image rights verify karo; license-friendly sources prefer kiye gaye hain, par rights guarantee nahi hain."
         )
     return (
         f"I could not fetch image cards for **{subject}** right now. Try again, or ask me to create a prompt for generating one."
         if language == "en"
         else f"Abhi **{subject}** ke image cards fetch nahi ho paaye. Dobara try karo, ya main image generation prompt bana sakta hoon."
     )
+
+
+def _image_response_metadata() -> dict[str, Any]:
+    return {
+        "image_cards": {
+            "type": "source_linked_reference_images",
+            "rights_notice": "Open each source URL to verify license and reuse rights before downloading, saving, or publishing.",
+            "license_safe_sources_preferred": ["Wikimedia Commons", "Unsplash", "Pexels", "Pixabay"],
+        }
+    }
 
 def _clean_answer(text: str) -> str:
     out = re.sub(r"\[(\d+)\]", "", text)
@@ -1238,6 +1248,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
         metadata = {
             "routing": {"selected_route": "image_search", "reason": "direct_image_request", "score": 1.0},
             "agent_plan": manager_plan(cleaned_query, use_web=True, deep_think=False, code_mode=False),
+            **_image_response_metadata(),
         }
         save_message(
             payload.user_id, payload.session_id, "assistant", image_reply,
@@ -1472,7 +1483,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
         suggestions=suggestions,
         thinking=thinking,
         latency_ms=elapsed,
-        metadata=route_meta,
+        metadata={**route_meta, **(_image_response_metadata() if images else {})},
     )
 
 
@@ -1683,6 +1694,7 @@ def chat_stream(payload: ChatRequest):
         metadata = {
             "routing": {"selected_route": "image_search_stream", "reason": "direct_image_request", "score": 1.0},
             "agent_plan": manager_plan(cleaned_query, use_web=True, deep_think=False, code_mode=False),
+            **_image_response_metadata(),
         }
         save_message(
             payload.user_id, payload.session_id, "assistant", image_reply,
@@ -1871,13 +1883,13 @@ def chat_stream(payload: ChatRequest):
             thinking = ""
 
         # Image search for visual queries
-        images_payload: list[dict[str, str]] = []
+        images_payload: list[dict[str, Any]] = []
         if use_web and _is_visual_query_local(cleaned_query):
             raw_images = search_images(cleaned_query, max_results=3)
             images_payload = raw_images
 
         # Send sources + images early
-        yield f"data: {_json.dumps({'type': 'sources', 'sources': sources_payload, 'confidence': confidence, 'images': images_payload})}\n\n"
+        yield f"data: {_json.dumps({'type': 'sources', 'sources': sources_payload, 'confidence': confidence, 'images': images_payload, 'metadata': _image_response_metadata() if images_payload else {}})}\n\n"
 
         # Stage 3: Generating
         yield f"data: {_json.dumps({'type': 'status', 'stage': 'generating', 'message': 'Composing response...'})}\n\n"
@@ -1938,7 +1950,15 @@ def chat_stream(payload: ChatRequest):
             },
         )
         elapsed = int((perf_counter() - start) * 1000)
-        yield f"data: {_json.dumps({'type': 'done', 'latency_ms': elapsed, 'confidence': adj_confidence, 'suggestions': suggestions, 'metadata': {'routing': {'selected_route': 'model_generation_stream', 'score': round(quick_score, 4), 'reason': quick_reason}, 'mode': {'code_mode': code_mode_active, 'master_mode': master_mode_active}, 'intent': intent_meta, 'agent_plan': agent_plan, 'evaluator': eval_diag}})}\n\n"
+        done_metadata = {
+            'routing': {'selected_route': 'model_generation_stream', 'score': round(quick_score, 4), 'reason': quick_reason},
+            'mode': {'code_mode': code_mode_active, 'master_mode': master_mode_active},
+            'intent': intent_meta,
+            'agent_plan': agent_plan,
+            'evaluator': eval_diag,
+            **(_image_response_metadata() if images_payload else {}),
+        }
+        yield f"data: {_json.dumps({'type': 'done', 'latency_ms': elapsed, 'confidence': adj_confidence, 'suggestions': suggestions, 'metadata': done_metadata})}\n\n"
 
     return StreamingResponse(_stream_events(), media_type="text/event-stream")
 
