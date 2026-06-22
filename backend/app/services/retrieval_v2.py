@@ -172,7 +172,7 @@ def _openverse_image_search(query: str, max_results: int) -> list[dict[str, Any]
             "https://api.openverse.org/v1/images/",
             params={"q": query, "page_size": max(max_results, 4), "mature": "false"},
             headers={"User-Agent": _IMAGE_UA},
-            timeout=10,
+            timeout=6,
         )
         if not resp.ok:
             return []
@@ -229,7 +229,7 @@ def _wikimedia_image_search(query: str, max_results: int) -> list[dict[str, Any]
                 "format": "json",
             },
             headers={"User-Agent": _IMAGE_UA},
-            timeout=10,
+            timeout=6,
         )
         if not resp.ok:
             return []
@@ -260,7 +260,7 @@ def _wikimedia_image_search(query: str, max_results: int) -> list[dict[str, Any]
             "license_safe_source": True,
             "license_verified": False,
             "license_note": "Wikimedia Commons file; open the source to confirm the exact license.",
-            "is_reference": False,
+            "is_reference": True,
         })
         if len(results) >= max_results:
             break
