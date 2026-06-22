@@ -3752,7 +3752,36 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 <button key={mode} type="button" onClick={() => setProductMode(mode)} className={`min-h-9 shrink-0 rounded-full border px-3 text-xs font-medium transition ${productMode === mode ? "border-cyan-500/45 bg-cyan-500/12 text-cyan-200" : "border-zinc-700/60 bg-zinc-900/70 text-zinc-400 hover:border-cyan-500/30 hover:text-zinc-200"}`}>{mode}</button>
               ))}
             </div>
-            <div className={`flex gap-1 sm:gap-2 items-end bg-zinc-900/80 border rounded-2xl px-1.5 sm:px-3 py-1.5 sm:py-2 focus-within:border-cyan-500/40 focus-within:shadow-cyan-500/5 transition-all shadow-lg shadow-black/20 ${allModesActive ? "border-cyan-500/45 trinity-glow" : "border-zinc-700/50"}`}>
+            <div className={`flex flex-col gap-2 bg-zinc-900/80 border rounded-2xl px-2.5 sm:px-3 py-2.5 focus-within:border-cyan-500/40 focus-within:shadow-cyan-500/5 transition-all shadow-lg shadow-black/20 ${allModesActive ? "border-cyan-500/45 trinity-glow" : "border-zinc-700/50"}`}>
+              <div className="flex items-start gap-2">
+                {/* Textarea */}
+                <textarea
+                  ref={inputRef}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Type a message"
+                  rows={1}
+                  className="min-h-11 flex-1 min-w-0 bg-transparent px-1 py-2 outline-none text-[15px] sm:text-[15px] placeholder:text-zinc-500 resize-none max-h-37.5 leading-relaxed"
+                />
+
+                {/* Send / Stop button */}
+                {loading ? (
+                  <button type="button" onClick={stopGeneration}
+                    className="mt-1 w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-zinc-700 flex items-center justify-center hover:bg-zinc-600 transition shrink-0" title="Stop">
+                    <div className="w-3.5 h-3.5 rounded-sm bg-white" />
+                  </button>
+                ) : (
+                  <button type="submit" disabled={(!query.trim() && attachedFiles.length === 0) || uploadingFiles}
+                    className="mt-1 w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-linear-to-r from-cyan-500 to-blue-600 flex items-center justify-center disabled:opacity-30 transition hover:brightness-110 shrink-0" title="Send">
+                    <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto pt-1">
               {/* Attach file button */}
               <div className="relative shrink-0">
               <button type="button" onClick={() => setInputMenuOpen((prev) => !prev)}
@@ -3862,31 +3891,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 </svg>
               </button>
 
-              {/* Textarea */}
-              <textarea
-                ref={inputRef}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Message Credon AI&#8230;"
-                rows={1}
-                className="flex-1 min-w-0 bg-transparent py-2.5 outline-none text-[15px] sm:text-[15px] placeholder:text-zinc-500 resize-none max-h-37.5 leading-relaxed"
-              />
-
-              {/* Send / Stop button */}
-              {loading ? (
-                <button type="button" onClick={stopGeneration}
-                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-zinc-700 flex items-center justify-center hover:bg-zinc-600 transition shrink-0 mb-0.5" title="Stop">
-                  <div className="w-3.5 h-3.5 rounded-sm bg-white" />
-                </button>
-              ) : (
-                <button type="submit" disabled={(!query.trim() && attachedFiles.length === 0) || uploadingFiles}
-                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-linear-to-r from-cyan-500 to-blue-600 flex items-center justify-center disabled:opacity-30 transition hover:brightness-110 shrink-0 mb-0.5" title="Send">
-                  <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
-                  </svg>
-                </button>
-              )}
+              </div>
             </div>
             {uploadingFiles && uploadStatus && (
               <p className="text-center text-[11px] text-cyan-300 mt-1.5 sm:mt-2 flex items-center justify-center gap-1.5">
