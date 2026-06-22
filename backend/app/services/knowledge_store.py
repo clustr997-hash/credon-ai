@@ -73,7 +73,16 @@ def postgres_health() -> dict[str, Any]:
             "error": "" if table_exists and vector_enabled else "run_backend/scripts/setup_supabase_pgvector.sql",
         }
     except Exception as exc:
-        return {"configured": True, "ok": False, "error": str(exc)}
+        message = str(exc)
+        hint = ""
+        if "Name or service not known" in message or "could not translate host" in message:
+            hint = (
+                " — the direct 'db.<ref>.supabase.co' host is IPv6-only and not resolvable from "
+                "this host. Use the IPv4 Supabase pooler URL instead "
+                "(host 'aws-0-<region>.pooler.supabase.com', user 'postgres.<project-ref>', "
+                "port 6543) in SUPABASE_DB_URL, or set KNOWLEDGE_STORE_BACKEND=firestore to skip Postgres."
+            )
+        return {"configured": True, "ok": False, "error": message + hint}
 
 def _embedding_literal(embedding: list[float]) -> str:
     # pgvector text literal format: [0.1,0.2,...]

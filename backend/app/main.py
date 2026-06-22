@@ -14,6 +14,7 @@ from app.routes.chat import router as chat_router
 from app.routes.ingest import router as ingest_router
 from app.routes.generate import router as generate_router
 from app.services.knowledge_store import list_user_knowledge_snippets, postgres_health
+from app.services.chat_store import firestore_health
 from app.services.models import generate_sync
 from app.services.retrieval_v2 import retrieve_sources
 
@@ -188,6 +189,7 @@ def health_providers() -> dict[str, object]:
         "serper": _provider_check_serper(),
         "langsearch": _provider_check_langsearch(),
         "ollama": _provider_check_ollama(),
+        "firestore": firestore_health(),
         "supabase": postgres_health(),
     }
     ready_count = sum(1 for item in checks.values() if bool(item.get("ok")))

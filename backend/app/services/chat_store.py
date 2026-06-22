@@ -102,6 +102,37 @@ def get_firestore_client() -> Any | None:
     return _firebase_client()
 
 
+def firestore_health() -> dict[str, Any]:
+    """Report Firestore readiness without raising.
+
+    This is the persistence backend for chat history and (as a fallback) the
+    knowledge vault. When it is NOT ok, both fall back to an on-disk JSON file
+    that is wiped on every Render restart/redeploy — i.e. history would be lost.
+    """
+    if firebase_admin is None or credentials is None or firestore is None:
+        return {"configured": False, "ok": False, "error": "firebase_admin_not_installed"}
+
+    has_inline_creds = bool(
+        os.getenv("FIREBASE_PROJECT_ID")
+        and os.getenv("FIREBASE_CLIENT_EMAIL")
+        and os.getenv("FIREBASE_PRIVATE_KEY")
+    )
+    has_sa_file = bool(os.getenv("FIREBASE_SERVICE_ACCOUNT_PATH"))
+    if not (has_inline_creds or has_sa_file):
+        return {"configured": False, "ok": False, "error": "missing_FIREBASE_credentials"}
+
+    try:
+        client = _firebase_client()
+        if client is None:
+            return {"configured": True, "ok": False, "error": "client_init_failed"}
+        # Lightweight connectivity probe: reading an empty collection succeeds
+        # quickly when credentials + network are valid.
+        list(client.collection("__health__").limit(1).stream())
+        return {"configured": True, "ok": True, "error": ""}
+    except Exception as exc:
+        return {"configured": True, "ok": False, "error": str(exc)}
+
+
 _load_local_store()
 
 
