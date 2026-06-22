@@ -170,9 +170,7 @@ const LOCAL_TRENDING_PROMPTS = [
   "Explain space technology breakthroughs in simple words",
 ];
 
-const PRODUCT_MODES = ["Student", "Developer", "Founder", "Researcher", "Business"] as const;
 const ANSWER_STYLES = ["Simple", "Balanced", "Expert", "Research Paper"] as const;
-type ProductMode = typeof PRODUCT_MODES[number];
 type AnswerStyle = typeof ANSWER_STYLES[number];
 
 
@@ -1773,7 +1771,6 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   const [inputMenuOpen, setInputMenuOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
   const [connectionNotice, setConnectionNotice] = useState<string | null>(null);
-  const [productMode, setProductMode] = useState<ProductMode>("Student");
   const [answerStyle, setAnswerStyle] = useState<AnswerStyle>("Balanced");
   const [chatSearch, setChatSearch] = useState("");
   const [pinnedSessions, setPinnedSessions] = useState<string[]>([]);
@@ -2325,7 +2322,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         body: JSON.stringify({
           user_id: uid,
           session_id: currentSession,
-          query: `${backendQuery}\n\n[Credon UX preferences] Product mode: ${productMode}. Answer style: ${answerStyle}. Automatically choose the best response layout (table/timeline/checklist/code/report) when useful.`,
+          query: `${backendQuery}\n\n[Credon UX preferences] Answer style: ${answerStyle}. Automatically choose the best response layout (table/timeline/checklist/code/report) when useful.`,
           language: "auto",
           model: selectedModel || undefined,
           use_web: useWeb,
@@ -2579,7 +2576,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
             body: JSON.stringify({
               user_id: uid,
               session_id: currentSession,
-              query: `${backendQuery}\n\n[Credon UX preferences] Product mode: ${productMode}. Answer style: ${answerStyle}.`,
+              query: `${backendQuery}\n\n[Credon UX preferences] Answer style: ${answerStyle}.`,
               language: "auto",
               model: selectedModel || undefined,
               use_web: true,
@@ -3746,12 +3743,6 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               )}
             </div>
 
-            <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-1" aria-label="Credon modes">
-              <span className="shrink-0 text-[10px] text-zinc-500">Auto detects intent</span>
-              {PRODUCT_MODES.map((mode) => (
-                <button key={mode} type="button" onClick={() => setProductMode(mode)} className={`min-h-9 shrink-0 rounded-full border px-3 text-xs font-medium transition ${productMode === mode ? "border-cyan-500/45 bg-cyan-500/12 text-cyan-200" : "border-zinc-700/60 bg-zinc-900/70 text-zinc-400 hover:border-cyan-500/30 hover:text-zinc-200"}`}>{mode}</button>
-              ))}
-            </div>
             <div className={`flex gap-1 sm:gap-2 items-end bg-zinc-900/80 border rounded-2xl px-1.5 sm:px-3 py-1.5 sm:py-2 focus-within:border-cyan-500/40 focus-within:shadow-cyan-500/5 transition-all shadow-lg shadow-black/20 ${allModesActive ? "border-cyan-500/45 trinity-glow" : "border-zinc-700/50"}`}>
               {/* Attach file button */}
               <div className="relative shrink-0">
