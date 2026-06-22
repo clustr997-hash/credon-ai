@@ -69,6 +69,7 @@ class ChatMessage(BaseModel):
     thinking: str = ""
     confidence: str = ""
     sources: list[Source] = []
+    images: list[ImageResult] = []
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

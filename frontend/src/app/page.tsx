@@ -2043,6 +2043,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
           thinking: m.thinking || undefined,
           confidence: m.confidence || undefined,
           sources: m.sources?.length ? m.sources : undefined,
+          images: m.images?.length ? m.images : undefined,
           metadata: m.metadata || undefined,
         })));
       } catch { setMessages([{ role: "assistant", text: GREET, timestamp: Date.now() }]); }
