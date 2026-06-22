@@ -3752,11 +3752,11 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 <button key={mode} type="button" onClick={() => setProductMode(mode)} className={`min-h-9 shrink-0 rounded-full border px-3 text-xs font-medium transition ${productMode === mode ? "border-cyan-500/45 bg-cyan-500/12 text-cyan-200" : "border-zinc-700/60 bg-zinc-900/70 text-zinc-400 hover:border-cyan-500/30 hover:text-zinc-200"}`}>{mode}</button>
               ))}
             </div>
-            <div className={`flex gap-1 sm:gap-2 items-end bg-zinc-900/80 border rounded-2xl px-1.5 sm:px-3 py-1.5 sm:py-2 focus-within:border-cyan-500/40 focus-within:shadow-cyan-500/5 transition-all shadow-lg shadow-black/20 ${allModesActive ? "border-cyan-500/45 trinity-glow" : "border-zinc-700/50"}`}>
+            <div className={`flex min-h-16 gap-1.5 sm:gap-2.5 items-end bg-zinc-900/80 border rounded-2xl px-2.5 sm:px-4 py-2.5 sm:py-3 focus-within:border-cyan-500/40 focus-within:shadow-cyan-500/5 transition-all shadow-lg shadow-black/20 ${allModesActive ? "border-cyan-500/45 trinity-glow" : "border-zinc-700/50"}`}>
               {/* Attach file button */}
               <div className="relative shrink-0">
               <button type="button" onClick={() => setInputMenuOpen((prev) => !prev)}
-                className={`p-1.5 sm:p-2 transition rounded-lg shrink-0 ${inputMenuOpen ? "text-cyan-200 bg-cyan-500/10" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`} title="Add image, document, camera, or voice">
+                className={`min-h-10 min-w-10 p-2 sm:p-2.5 transition rounded-xl shrink-0 flex items-center justify-center ${inputMenuOpen ? "text-cyan-200 bg-cyan-500/10" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`} title="Add image, document, or camera">
                 <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
                 </svg>
@@ -3766,7 +3766,6 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                   <button type="button" onClick={() => { fileInputRef.current?.click(); setInputMenuOpen(false); }} className="flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-xs text-zinc-200 hover:bg-zinc-800/70">Image upload</button>
                   <button type="button" onClick={() => { fileInputRef.current?.click(); setInputMenuOpen(false); }} className="flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-xs text-zinc-200 hover:bg-zinc-800/70">PDF document</button>
                   <button type="button" onClick={() => { cameraInputRef.current?.click(); setInputMenuOpen(false); }} className="flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-xs text-zinc-200 hover:bg-zinc-800/70">Camera</button>
-                  <button type="button" onClick={startVoiceInput} className="flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-xs text-zinc-200 hover:bg-zinc-800/70">{listening ? "Listening..." : "Voice input"}</button>
                 </div>
               )}
               </div>
@@ -3774,7 +3773,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               <button
                 type="button"
                 onClick={() => setMobileModesOpen((prev) => !prev)}
-                className={`sm:hidden p-1.5 rounded-lg transition shrink-0 ${mobileModesOpen ? "text-cyan-300 bg-cyan-500/10" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
+                className={`sm:hidden min-h-10 min-w-10 p-2 rounded-xl transition shrink-0 flex items-center justify-center ${mobileModesOpen ? "text-cyan-300 bg-cyan-500/10" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
                 title="Modes"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
@@ -3791,7 +3790,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                   }
                   setUseWeb((prev) => !prev);
                 }}
-                className={`flex p-1.5 sm:p-2 rounded-lg transition shrink-0 ${useWeb ? "text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
+                className={`flex min-h-10 min-w-10 p-2 sm:p-2.5 rounded-xl transition shrink-0 items-center justify-center ${useWeb ? "text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
                 title={isGuest ? "Sign in to use Web Search" : useWeb ? "Web search ON" : "Web search OFF"}>
                 <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" />
@@ -3814,7 +3813,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                     return next;
                   });
                 }}
-                className={`flex p-1.5 sm:p-2 rounded-lg transition shrink-0 ${deepThink ? "text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
+                className={`flex min-h-10 min-w-10 p-2 sm:p-2.5 rounded-xl transition shrink-0 items-center justify-center ${deepThink ? "text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
                 title={isGuest ? "Sign in to use DeepThink" : deepThink ? "DeepThink ON" : "DeepThink OFF"}
               >
                 <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -3838,7 +3837,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                     return next;
                   });
                 }}
-                className={`hidden sm:flex p-2 rounded-lg transition shrink-0 ${codeMode ? "text-cyan-300 bg-cyan-500/10 border border-cyan-500/30" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
+                className={`hidden sm:flex min-h-10 min-w-10 p-2.5 rounded-xl transition shrink-0 items-center justify-center ${codeMode ? "text-cyan-300 bg-cyan-500/10 border border-cyan-500/30" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
                 title={isGuest ? "Sign in to use Code Mode" : codeMode ? "Code Mode ON" : "Code Mode OFF"}
               >
                 <span className="text-xs font-bold">&lt;/&gt;</span>
@@ -3854,7 +3853,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                   }
                   setKnowledgeOpen(true);
                 }}
-                className="hidden sm:flex p-2 rounded-lg transition shrink-0 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-500/10"
+                className="hidden sm:flex min-h-10 min-w-10 p-2.5 rounded-xl transition shrink-0 items-center justify-center text-zinc-500 hover:text-emerald-400 hover:bg-emerald-500/10"
                 title={isGuest ? "Sign in to upload knowledge" : "Upload notes, papers, cheat sheets"}
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -3870,18 +3869,32 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 onKeyDown={handleKeyDown}
                 placeholder="Message Credon AI&#8230;"
                 rows={1}
-                className="flex-1 min-w-0 bg-transparent py-2.5 outline-none text-[15px] sm:text-[15px] placeholder:text-zinc-500 resize-none max-h-37.5 leading-relaxed"
+                className="flex-1 min-w-0 min-h-11 bg-transparent py-3.5 sm:py-4 outline-none text-[15px] sm:text-[15px] placeholder:text-zinc-500 resize-none max-h-40 leading-relaxed"
               />
+
+              {/* Voice input button */}
+              <button
+                type="button"
+                onClick={startVoiceInput}
+                className={`relative flex min-h-10 min-w-10 items-center justify-center rounded-xl p-2.5 transition shrink-0 mb-0.5 ${listening ? "bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-400/50 shadow-lg shadow-cyan-500/10" : "text-zinc-500 hover:text-cyan-300 hover:bg-cyan-500/10"}`}
+                title={listening ? "Listening..." : "Voice input"}
+                aria-pressed={listening}
+              >
+                {listening && <span className="absolute inset-0 rounded-xl bg-cyan-400/10 animate-pulse" aria-hidden="true" />}
+                <svg className="relative w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-12 0v1.5a6 6 0 006 6zm0 0v3m-3 0h6M12 15.75a3 3 0 003-3V5.25a3 3 0 10-6 0v7.5a3 3 0 003 3z" />
+                </svg>
+              </button>
 
               {/* Send / Stop button */}
               {loading ? (
                 <button type="button" onClick={stopGeneration}
-                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-zinc-700 flex items-center justify-center hover:bg-zinc-600 transition shrink-0 mb-0.5" title="Stop">
+                  className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-zinc-700 flex items-center justify-center hover:bg-zinc-600 transition shrink-0 mb-0.5" title="Stop">
                   <div className="w-3.5 h-3.5 rounded-sm bg-white" />
                 </button>
               ) : (
                 <button type="submit" disabled={(!query.trim() && attachedFiles.length === 0) || uploadingFiles}
-                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-linear-to-r from-cyan-500 to-blue-600 flex items-center justify-center disabled:opacity-30 transition hover:brightness-110 shrink-0 mb-0.5" title="Send">
+                  className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-linear-to-r from-cyan-500 to-blue-600 flex items-center justify-center disabled:opacity-30 transition hover:brightness-110 shrink-0 mb-0.5" title="Send">
                   <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
                   </svg>
