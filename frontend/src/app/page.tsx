@@ -408,6 +408,19 @@ function CredonLogo({ size = 32, animate = false, className = "" }: { size?: num
 
 /* ─────────────────────────── Progress Dots (like Claude) ─────────────────────────── */
 
+
+function CredonLoadingLogo({ label = "Credon is thinking" }: { label?: string }) {
+  return (
+    <div
+      className="w-8 h-8 rounded-full bg-linear-to-br from-cyan-500 to-blue-600 flex items-center justify-center shrink-0 overflow-hidden shadow-md shadow-cyan-500/15"
+      aria-label={label}
+      role="status"
+    >
+      <CredonLogo size={22} className="animate-spin [animation-duration:1.4s] [animation-timing-function:linear]" />
+    </div>
+  );
+}
+
 function ProgressDots({ stage }: { stage: ThinkingStage }) {
   const labels: Record<string, string> = {
     searching: "Searching web… reading sources",
@@ -417,9 +430,7 @@ function ProgressDots({ stage }: { stage: ThinkingStage }) {
 
   return (
     <div className="flex gap-3 items-start">
-      <div className="w-8 h-8 rounded-full bg-linear-to-br from-cyan-500 to-blue-600 flex items-center justify-center shrink-0 overflow-hidden">
-        <CredonLogo size={22} animate />
-      </div>
+      <CredonLoadingLogo label="Credon is preparing an answer" />
       <div className="bg-zinc-800/80 border border-zinc-700/40 rounded-2xl rounded-tl-md px-5 py-4 max-w-sm">
         <div className="flex items-center gap-3">
           {/* Animated dots that cycle 1→2→3→1 */}
@@ -1819,6 +1830,8 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   /* ── File upload ── */
   const [attachedFiles, setAttachedFiles] = useState<PendingAttachment[]>([]);
   const [uploadingFiles, setUploadingFiles] = useState(false);
+  const assistantAnswerStreaming = messages.some((m) => m.role === "assistant" && m.streaming);
+  const showPreTokenLoader = loading && !assistantAnswerStreaming;
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [transcriptLoading, setTranscriptLoading] = useState(false);
@@ -3553,14 +3566,12 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               ))}
 
               {/* Thinking indicator - shows BEFORE answer starts */}
-              {loading && thinkingStage && <ProgressDots stage={thinkingStage} />}
+              {showPreTokenLoader && thinkingStage && <ProgressDots stage={thinkingStage} />}
 
               {/* Live chain-of-thought while generating — word by word */}
-              {loading && !!liveThinking && (
+              {showPreTokenLoader && !!liveThinking && (
                 <div className="flex gap-3 items-start">
-                  <div className="w-8 h-8 rounded-full bg-linear-to-br from-cyan-500 to-blue-600 flex items-center justify-center shrink-0 overflow-hidden">
-                    <CredonLogo size={22} />
-                  </div>
+                  <CredonLoadingLogo label="Credon is thinking through your request" />
                   <div className="max-w-2xl w-full">
                     <ThinkingBlock thinking={liveThinking} streaming />
                   </div>
@@ -3568,11 +3579,9 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               )}
 
               {/* Connecting dots (very brief, before first SSE event) */}
-              {loading && !thinkingStage && !messages.some((m) => m.streaming) && (
+              {showPreTokenLoader && !thinkingStage && !liveThinking && (
                 <div className="flex gap-3">
-                  <div className="w-8 h-8 rounded-full bg-linear-to-br from-cyan-500 to-blue-600 flex items-center justify-center shrink-0 overflow-hidden">
-                    <CredonLogo size={22} animate />
-                  </div>
+                  <CredonLoadingLogo label="Credon is connecting" />
                   <div className="bg-zinc-800/80 border border-zinc-700/40 rounded-2xl rounded-tl-md px-5 py-4">
                     <div className="flex items-center gap-2">
                       <div className="flex items-center gap-1">
