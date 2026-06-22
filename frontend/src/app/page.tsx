@@ -1997,6 +1997,20 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  /* ── Backend warmup: the free-tier backend sleeps after idle and a cold boot
+     can take 30–60s, which otherwise surfaces as a connection error on the first
+     message. Ping /health (throttled) on load and when the user shows intent so
+     the boot happens before they wait on a real query. ── */
+  const lastWarmRef = useRef<number>(0);
+  const warmBackend = useCallback(() => {
+    const now = Date.now();
+    if (now - lastWarmRef.current < 60_000) return;
+    lastWarmRef.current = now;
+    void fetch(`${API}/health`, { method: "GET", cache: "no-store" }).catch(() => {
+      lastWarmRef.current = 0; // allow a retry if the wake-up ping itself failed
+    });
+  }, []);
+
   const [localUserId] = useState(() => {
     if (typeof window === "undefined") return "guest";
     const stored = localStorage.getItem("credon-local-uid");
@@ -2217,6 +2231,8 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   }, [uid, sessionStorageKey]);
 
   useEffect(() => { void loadSessions(); }, [loadSessions]);
+
+  useEffect(() => { warmBackend(); }, [warmBackend]);
 
   useEffect(() => {
     if (!currentSession) {
@@ -2787,11 +2803,14 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       setLiveThinking("");
 
       // Auto-retry the sync (non-streaming) endpoint with exponential backoff.
-      // A failed stream is usually a Render cold start, so backoff gives the
-      // backend time to wake before we surface a hard error.
+      // A failed stream is usually a Render cold start (the free-tier backend
+      // sleeps after idle and can take 30–60s to wake), so the backoff must be
+      // patient enough to outlast a cold boot before we surface a hard error.
       if (!isRegenerate) {
-        const backoffsMs = [1000, 2000, 4000];
+        warmBackend();
+        const backoffsMs = [2000, 5000, 10000, 20000];
         for (let attempt = 0; attempt < backoffsMs.length; attempt++) {
+          if (controller.signal.aborted) return; // user stopped during backoff
           if (attempt > 0) setThinkingStage("composing");
           try {
             const retryRes = await fetch(`${API}/api/v1/chat`, {
@@ -2811,6 +2830,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 use_web: true,
                 deep_think: false,
               }),
+              signal: controller.signal,
             });
             if (retryRes.ok) {
               const data = await retryRes.json();
@@ -2830,10 +2850,26 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 return;
               }
             }
-          } catch {
-            // This attempt failed — fall through to backoff/next attempt.
+          } catch (retryErr) {
+            if ((retryErr as Error).name === "AbortError") return; // user stopped
+            // Otherwise this attempt failed — fall through to backoff/next attempt.
           }
-          await new Promise((resolve) => window.setTimeout(resolve, backoffsMs[attempt]));
+          // Wait before the next attempt only — no pointless sleep after the last
+          // one. The wait is abortable so "Stop" cancels it instead of hanging.
+          if (attempt < backoffsMs.length - 1) {
+            try {
+              await new Promise<void>((resolve, reject) => {
+                const timer = window.setTimeout(resolve, backoffsMs[attempt]);
+                controller.signal.addEventListener(
+                  "abort",
+                  () => { window.clearTimeout(timer); reject(new DOMException("Aborted", "AbortError")); },
+                  { once: true },
+                );
+              });
+            } catch {
+              return; // aborted during backoff
+            }
+          }
         }
         setThinkingStage(null);
 
@@ -3981,6 +4017,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 ref={inputRef}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                onFocus={warmBackend}
                 onKeyDown={handleKeyDown}
                 placeholder="Message Credon AI&#8230;"
                 rows={1}
