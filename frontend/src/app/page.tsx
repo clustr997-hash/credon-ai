@@ -2810,6 +2810,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         warmBackend();
         const backoffsMs = [2000, 5000, 10000, 20000];
         for (let attempt = 0; attempt < backoffsMs.length; attempt++) {
+          if (controller.signal.aborted) return; // user stopped during backoff
           if (attempt > 0) setThinkingStage("composing");
           try {
             const retryRes = await fetch(`${API}/api/v1/chat`, {
@@ -2829,6 +2830,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 use_web: true,
                 deep_think: false,
               }),
+              signal: controller.signal,
             });
             if (retryRes.ok) {
               const data = await retryRes.json();
@@ -2848,10 +2850,26 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 return;
               }
             }
-          } catch {
-            // This attempt failed — fall through to backoff/next attempt.
+          } catch (retryErr) {
+            if ((retryErr as Error).name === "AbortError") return; // user stopped
+            // Otherwise this attempt failed — fall through to backoff/next attempt.
           }
-          await new Promise((resolve) => window.setTimeout(resolve, backoffsMs[attempt]));
+          // Wait before the next attempt only — no pointless sleep after the last
+          // one. The wait is abortable so "Stop" cancels it instead of hanging.
+          if (attempt < backoffsMs.length - 1) {
+            try {
+              await new Promise<void>((resolve, reject) => {
+                const timer = window.setTimeout(resolve, backoffsMs[attempt]);
+                controller.signal.addEventListener(
+                  "abort",
+                  () => { window.clearTimeout(timer); reject(new DOMException("Aborted", "AbortError")); },
+                  { once: true },
+                );
+              });
+            } catch {
+              return; // aborted during backoff
+            }
+          }
         }
         setThinkingStage(null);
 
