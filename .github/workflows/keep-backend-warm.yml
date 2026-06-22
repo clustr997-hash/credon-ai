@@ -38,7 +38,7 @@ jobs:
           for attempt in 1 2 3; do
             code=$(curl -s -o /dev/null -w "%{http_code}" \
               --max-time 90 --connect-timeout 20 \
-              "$BACKEND_URL/health" || echo "000")
+              "$BACKEND_URL/health") || code="000"
             echo "Attempt $attempt -> HTTP $code"
             if [ "$code" = "200" ]; then
               echo "Backend is awake."
