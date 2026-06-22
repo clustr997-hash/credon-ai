@@ -15,6 +15,7 @@ class ChatRequest(BaseModel):
     reply_to: str | None = None
     latitude: float | None = None
     longitude: float | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class Source(BaseModel):

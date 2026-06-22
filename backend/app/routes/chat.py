@@ -65,6 +65,14 @@ def _normalize_query_key(query: str) -> str:
     return re.sub(r"\s+", " ", query.strip().lower())[:500]
 
 
+def _meta_str(metadata: dict[str, Any], key: str) -> str | None:
+    """Read a string value from the request metadata dict, ignoring blanks."""
+    value = metadata.get(key)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
 def _response_cache_key(
     *,
     user_id: str,
@@ -75,6 +83,8 @@ def _response_cache_key(
     code_mode: bool,
     detail_pref: str,
     news_top_n: int,
+    product_mode: str | None = None,
+    answer_style: str | None = None,
 ) -> str:
     return "|".join(
         [
@@ -86,6 +96,8 @@ def _response_cache_key(
             "code1" if code_mode else "code0",
             f"detail:{detail_pref}",
             f"news:{news_top_n}",
+            f"mode:{product_mode or '-'}",
+            f"style:{answer_style or '-'}",
         ]
     )
 
@@ -1066,6 +1078,8 @@ def chat(payload: ChatRequest) -> ChatResponse:
         Literal["en", "hinglish"],
         payload.language if payload.language != "auto" else detect_language(cleaned_query),
     )
+    product_mode = _meta_str(payload.metadata, "product_mode")
+    answer_style = _meta_str(payload.metadata, "answer_style")
 
     save_message(payload.user_id, payload.session_id, "user", cleaned_query)
     transcript = get_transcript(payload.user_id, payload.session_id)
@@ -1081,6 +1095,8 @@ def chat(payload: ChatRequest) -> ChatResponse:
         code_mode=code_mode_active,
         detail_pref=str(intent_meta.get("detail_preference", "default")),
         news_top_n=_safe_int(intent_meta.get("news_top_n", 0), 0),
+        product_mode=product_mode,
+        answer_style=answer_style,
     )
 
     agent_plan = manager_plan(cleaned_query, use_web=payload.use_web, deep_think=payload.deep_think, code_mode=payload.code_mode)
@@ -1314,6 +1330,8 @@ def chat(payload: ChatRequest) -> ChatResponse:
                 target_language,
                 model=chosen_model,
                 thinking="",
+                product_mode=product_mode,
+                answer_style=answer_style,
             )
         answer = _clean_answer(fast_answer)
         suggestions = extract_suggestions(answer)
@@ -1423,6 +1441,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
     raw_model_answer = generate_grounded_answer(
         working_query, results, target_language,
         model=chosen_model, thinking=thinking,
+        product_mode=product_mode, answer_style=answer_style,
     )
     model_answer = _clean_answer(raw_model_answer)
 
@@ -1515,6 +1534,8 @@ def chat_stream(payload: ChatRequest):
         Literal["en", "hinglish"],
         payload.language if payload.language != "auto" else detect_language(cleaned_query),
     )
+    product_mode = _meta_str(payload.metadata, "product_mode")
+    answer_style = _meta_str(payload.metadata, "answer_style")
 
     save_message(payload.user_id, payload.session_id, "user", cleaned_query)
     transcript = get_transcript(payload.user_id, payload.session_id)
@@ -1530,6 +1551,8 @@ def chat_stream(payload: ChatRequest):
         code_mode=code_mode_active,
         detail_pref=str(intent_meta.get("detail_preference", "default")),
         news_top_n=_safe_int(intent_meta.get("news_top_n", 0), 0),
+        product_mode=product_mode,
+        answer_style=answer_style,
     )
 
     agent_plan = manager_plan(cleaned_query, use_web=payload.use_web, deep_think=payload.deep_think, code_mode=payload.code_mode)
@@ -1752,6 +1775,8 @@ def chat_stream(payload: ChatRequest):
                 target_language,
                 model=chosen_model,
                 thinking="",
+                product_mode=product_mode,
+                answer_style=answer_style,
             )
         answer_text = _clean_answer(fast_answer)
         suggestions = extract_suggestions(answer_text)
@@ -1917,6 +1942,7 @@ def chat_stream(payload: ChatRequest):
         for token in generate_answer_stream(
             working_query, results, target_language,
             model=chosen_model, thinking=thinking,
+            product_mode=product_mode, answer_style=answer_style,
         ):
             full_answer.append(token)
             yield f"data: {_json.dumps({'type': 'token', 'content': token})}\n\n"

@@ -14,7 +14,61 @@ from app.services.models import generate_stream, generate_sync
 
 # ── Prompts ──────────────────────────────────────────────────────
 
-def _system_prompt() -> str:
+# Persona guidance keyed by the auto-detected product_mode the frontend sends.
+_PRODUCT_MODE_GUIDANCE: dict[str, str] = {
+    "Student": (
+        "The user looks like a STUDENT. Explain clearly with relatable examples, define jargon the "
+        "first time it appears, and be encouraging."
+    ),
+    "Developer": (
+        "The user looks like a DEVELOPER. Be precise and technical, prefer runnable code and concrete "
+        "API/tooling details, and skip basic hand-holding."
+    ),
+    "Founder": (
+        "The user looks like a FOUNDER/builder. Be strategic and practical — focus on tradeoffs, speed "
+        "to ship, and real-world execution."
+    ),
+    "Researcher": (
+        "The user looks like a RESEARCHER. Be rigorous, explain mechanisms, note uncertainty, and "
+        "structure the answer analytically."
+    ),
+    "Business": (
+        "The user has a BUSINESS intent. Be outcome-oriented — focus on impact, costs, and actionable "
+        "recommendations."
+    ),
+}
+
+# Answer-style guidance keyed by the frontend Answer Style selector.
+_ANSWER_STYLE_GUIDANCE: dict[str, str] = {
+    "Simple": "ANSWER STYLE = SIMPLE: max 5 sentences, plain language, no jargon, friendly.",
+    "Balanced": "ANSWER STYLE = BALANCED: moderate depth, key points, light structure (~200 words).",
+    "Expert": "ANSWER STYLE = EXPERT: deep technical detail, assume strong domain knowledge.",
+    "Research Paper": (
+        "ANSWER STYLE = RESEARCH PAPER: formal tone with Abstract, Introduction, Analysis, and "
+        "Conclusion sections, plus references at the end."
+    ),
+}
+
+
+def _persona_directive(product_mode: str | None, answer_style: str | None) -> str:
+    """Build a short directive appended to the system prompt so the detected
+    product mode and selected answer style actually influence the answer."""
+    parts: list[str] = []
+    if product_mode:
+        guidance = _PRODUCT_MODE_GUIDANCE.get(product_mode.strip().title())
+        if guidance:
+            parts.append(guidance)
+    if answer_style:
+        key = answer_style.strip().title()
+        guidance = _ANSWER_STYLE_GUIDANCE.get(key)
+        if guidance:
+            parts.append(guidance + " This selection overrides the default depth heuristics above.")
+    if not parts:
+        return ""
+    return "\n\nAUDIENCE & STYLE (current request):\n- " + "\n- ".join(parts)
+
+
+def _system_prompt(product_mode: str | None = None, answer_style: str | None = None) -> str:
     """Build system prompt with current date/time injected."""
     try:
         import zoneinfo
@@ -96,6 +150,7 @@ def _system_prompt() -> str:
         f"- EXPERT: deep technical detail, assumes strong domain knowledge\n"
         f"- RESEARCH PAPER: Abstract, Introduction, Analysis, Conclusion sections, formal tone, references at the end\n\n"
         f"Be warm, natural, and direct - like a smart friend explaining things."
+        + _persona_directive(product_mode, answer_style)
     )
 
 _FOLLOWUP_SYSTEM = """\
@@ -141,6 +196,8 @@ def _build_messages(
     sources: list[dict[str, Any]],
     target_language: str,
     thinking: str = "",
+    product_mode: str | None = None,
+    answer_style: str | None = None,
 ) -> list[dict[str, str]]:
     lang_hint = (
         "\nReply in natural Hinglish (Hindi+English in Latin script)."
@@ -160,7 +217,7 @@ def _build_messages(
         user_msg = f"Question: {query}{lang_hint}{analysis}"
 
     return [
-        {"role": "system", "content": _system_prompt()},
+        {"role": "system", "content": _system_prompt(product_mode, answer_style)},
         {"role": "user", "content": user_msg},
     ]
 
@@ -307,11 +364,16 @@ def generate_answer_stream(
     target_language: str,
     model: str | None = None,
     thinking: str = "",
+    product_mode: str | None = None,
+    answer_style: str | None = None,
 ) -> Generator[str, None, None]:
     if not _use_model():
         yield _fallback_answer(query, sources, target_language)
         return
-    msgs = _build_messages(query, sources, target_language, thinking=thinking)
+    msgs = _build_messages(
+        query, sources, target_language, thinking=thinking,
+        product_mode=product_mode, answer_style=answer_style,
+    )
     had_output = False
     for token in generate_stream(msgs, model=model):
         had_output = True
@@ -326,10 +388,15 @@ def generate_grounded_answer(
     target_language: str,
     model: str | None = None,
     thinking: str = "",
+    product_mode: str | None = None,
+    answer_style: str | None = None,
 ) -> str:
     if not _use_model():
         return _fallback_answer(query, sources, target_language)
-    msgs = _build_messages(query, sources, target_language, thinking=thinking)
+    msgs = _build_messages(
+        query, sources, target_language, thinking=thinking,
+        product_mode=product_mode, answer_style=answer_style,
+    )
 
     # Use orchestrator for parallel multi-model queries when available
     try:
