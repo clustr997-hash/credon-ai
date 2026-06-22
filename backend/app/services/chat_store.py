@@ -149,6 +149,7 @@ def save_message(
     thinking: str = "",
     confidence: str = "",
     sources: list[dict[str, str]] | None = None,
+    images: list[dict[str, str]] | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
     timestamp = _now_iso()
@@ -159,6 +160,8 @@ def save_message(
         entry["confidence"] = confidence
     if sources:
         entry["sources"] = sources
+    if images:
+        entry["images"] = images
     if metadata:
         entry["metadata"] = metadata
 

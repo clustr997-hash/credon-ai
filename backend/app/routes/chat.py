@@ -1079,6 +1079,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
                     thinking=str(cached.get("thinking", "")),
                     confidence=str(cached.get("confidence", "medium")),
                     sources=cast(list[dict[str, str]], cached.get("sources", [])),
+                    images=cast(list[dict[str, str]], cached.get("images", [])),
                     metadata={
                         "routing": {
                             "selected_route": "response_cache",
@@ -1238,7 +1239,13 @@ def chat(payload: ChatRequest) -> ChatResponse:
             "routing": {"selected_route": "image_search", "reason": "direct_image_request", "score": 1.0},
             "agent_plan": manager_plan(cleaned_query, use_web=True, deep_think=False, code_mode=False),
         }
-        save_message(payload.user_id, payload.session_id, "assistant", image_reply, confidence="high" if raw_images else "low", sources=image_sources, metadata=metadata)
+        save_message(
+            payload.user_id, payload.session_id, "assistant", image_reply,
+            confidence="high" if raw_images else "low",
+            sources=image_sources,
+            images=raw_images,
+            metadata=metadata,
+        )
         elapsed = int((perf_counter() - start) * 1000)
         return ChatResponse(
             answer=image_reply,
@@ -1426,19 +1433,21 @@ def chat(payload: ChatRequest) -> ChatResponse:
         "answer_arbitration": {"chosen": arbitration_source},
         "evaluator": eval_diag,
     }
-    save_message(
-        payload.user_id, payload.session_id, "assistant", answer,
-        thinking=thinking, confidence=confidence,
-        sources=sources_payload, metadata={**route_meta, "suggestions": suggestions},
-    )
-    # Self-learning: save this Q&A so Credon gets smarter
-    learn_from_conversation(cleaned_query, answer, confidence)
-
     # Image search for visual queries
     images: list[ImageResult] = []
     if use_web and _is_visual_query_local(cleaned_query):
         raw_images = search_images(cleaned_query, max_results=3)
         images = [ImageResult(**img) for img in raw_images]
+
+    save_message(
+        payload.user_id, payload.session_id, "assistant", answer,
+        thinking=thinking, confidence=confidence,
+        sources=sources_payload,
+        images=[img.model_dump() for img in images],
+        metadata={**route_meta, "suggestions": suggestions},
+    )
+    # Self-learning: save this Q&A so Credon gets smarter
+    learn_from_conversation(cleaned_query, answer, confidence)
 
     elapsed = int((perf_counter() - start) * 1000)
 
@@ -1522,6 +1531,7 @@ def chat_stream(payload: ChatRequest):
                 thinking=cached_thinking,
                 confidence=cached_conf,
                 sources=cached_sources,
+                images=cached_images,
                 metadata={
                     "routing": {
                         "selected_route": "response_cache_stream",
@@ -1674,7 +1684,13 @@ def chat_stream(payload: ChatRequest):
             "routing": {"selected_route": "image_search_stream", "reason": "direct_image_request", "score": 1.0},
             "agent_plan": manager_plan(cleaned_query, use_web=True, deep_think=False, code_mode=False),
         }
-        save_message(payload.user_id, payload.session_id, "assistant", image_reply, confidence="high" if raw_images else "low", sources=image_sources, metadata=metadata)
+        save_message(
+            payload.user_id, payload.session_id, "assistant", image_reply,
+            confidence="high" if raw_images else "low",
+            sources=image_sources,
+            images=raw_images,
+            metadata=metadata,
+        )
         elapsed = int((perf_counter() - start) * 1000)
 
         def _image_events():
@@ -1907,6 +1923,7 @@ def chat_stream(payload: ChatRequest):
                 "agent_plan": agent_plan,
                 "evaluator": eval_diag,
             },
+            images=images_payload,
         )
         learn_from_conversation(cleaned_query, answer_text, adj_confidence)
         _response_cache_set(
@@ -1959,6 +1976,23 @@ def get_user_transcript(user_id: str, session_id: str) -> ChatTranscriptResponse
             for source_item in raw_sources
             if "title" in source_item and "url" in source_item
         ]
+        raw_images_any = item.get("images")
+        raw_images: list[dict[str, Any]] = []
+        if isinstance(raw_images_any, list):
+            image_items = cast(list[object], raw_images_any)
+            for image_item_obj in image_items:
+                if isinstance(image_item_obj, dict):
+                    raw_images.append(cast(dict[str, Any], image_item_obj))
+        images = [
+            ImageResult(
+                image_url=str(image_item.get("image_url", "")),
+                thumbnail=str(image_item.get("thumbnail", "")),
+                title=str(image_item.get("title", "")),
+                source_url=str(image_item.get("source_url", "")),
+            )
+            for image_item in raw_images
+            if "image_url" in image_item
+        ]
         raw_meta = item.get("metadata")
         meta: dict[str, Any] = cast(dict[str, Any], raw_meta) if isinstance(raw_meta, dict) else {}
         messages.append(ChatMessage(
@@ -1968,6 +2002,7 @@ def get_user_transcript(user_id: str, session_id: str) -> ChatTranscriptResponse
             thinking=item.get("thinking", ""),
             confidence=item.get("confidence", ""),
             sources=sources,
+            images=images,
             metadata=meta,
         ))
     return ChatTranscriptResponse(user_id=user_id, session_id=session_id, messages=messages)
