@@ -103,6 +103,8 @@ type Message = {
     avg_score?: number;
   };
   metadata?: {
+    pinned?: boolean;
+    pin_id?: string;
     routing?: { selected_route?: string; reason?: string; score?: number };
     mode?: { code_mode?: boolean; master_mode?: boolean };
     evaluator?: Record<string, unknown>;
@@ -114,7 +116,22 @@ type Message = {
   };
   variants?: string[];
   activeVariant?: number;
+  pinned?: boolean;
 };
+
+function isPinnedMessage(message: Message): boolean {
+  return message.pinned === true || message.metadata?.pinned === true || Boolean(message.metadata?.pin_id);
+}
+
+function preservePinnedMessagesOnEdit(messages: Message[], editingIndex: number): Message[] {
+  const keptHistory = messages.slice(0, editingIndex);
+  const pinnedFromRemovedBranch = messages
+    .slice(editingIndex)
+    .filter(isPinnedMessage)
+    .map((message) => ({ ...message, streaming: false, thinkingStreaming: false }));
+
+  return [...keptHistory, ...pinnedFromRemovedBranch];
+}
 
 type FeedbackCategory = "irrelevant" | "incorrect" | "too_slow" | "too_long" | "other";
 
@@ -2044,6 +2061,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
           confidence: m.confidence || undefined,
           sources: m.sources?.length ? m.sources : undefined,
           metadata: m.metadata || undefined,
+          pinned: m.pinned === true || m.metadata?.pinned === true || Boolean(m.metadata?.pin_id),
         })));
       } catch { setMessages([{ role: "assistant", text: GREET, timestamp: Date.now() }]); }
       finally { setTranscriptLoading(false); }
@@ -2281,9 +2299,10 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     }
 
     if (!isRegenerate) {
-      // If editing a previous message, remove everything from that point
+      // If editing a previous message, trim the regenerated branch without dropping pins.
+      // Pinned messages may represent saved references that should survive edits/regenerations.
       if (editingIndex !== null) {
-        setMessages((prev) => prev.slice(0, editingIndex));
+        setMessages((prev) => preservePinnedMessagesOnEdit(prev, editingIndex));
         setEditingIndex(null);
       }
       setHasUserSentMessage(true);
@@ -2509,7 +2528,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                   thinkDurationSec,
                   suggestions: accSuggestions.length ? accSuggestions : undefined,
                   evaluator: accEvaluator,
-                  metadata: accMetadata,
+                  metadata: accMetadata ? { ...updated[idx].metadata, ...accMetadata } : updated[idx].metadata,
                 };
                 if (isRegenerate) {
                   const history = updated[idx].variants && updated[idx].variants.length > 0
@@ -2546,6 +2565,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
             thinking: accThinking || undefined,
             suggestions: accSuggestions.length ? accSuggestions : undefined,
             evaluator: accEvaluator,
+            metadata: accMetadata ? { ...updated[idx].metadata, ...accMetadata } : updated[idx].metadata,
           };
           if (isRegenerate) {
             const history = updated[idx].variants && updated[idx].variants.length > 0
