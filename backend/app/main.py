@@ -255,13 +255,17 @@ def _wikipedia_trending_prompts() -> list[str]:
     fresh in production even when web search is blocked.
     """
     prompts: list[str] = []
-    for delta in (1, 2):  # yesterday first; today's feed may not be published yet
+    deadline = time() + 4.5  # hard cap on total cache-miss latency added here
+    for delta in (1, 2):  # yesterday first; the day before is a rare fallback
+        remaining = deadline - time()
+        if remaining <= 0:
+            break
         day = (datetime.now(timezone.utc) - timedelta(days=delta)).strftime("%Y/%m/%d")
         try:
             resp = requests.get(
                 f"https://en.wikipedia.org/api/rest_v1/feed/featured/{day}",
                 headers={"User-Agent": "CredonAI/1.0 (https://credonai.web.app; trending)"},
-                timeout=6,
+                timeout=min(3.0, remaining),
             )
             if not resp.ok:
                 continue
