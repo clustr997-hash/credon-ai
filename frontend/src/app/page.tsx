@@ -171,9 +171,7 @@ const LOCAL_TRENDING_PROMPTS = [
 ];
 
 const PRODUCT_MODES = ["Student", "Developer", "Founder", "Researcher", "Business"] as const;
-const ANSWER_STYLES = ["Simple", "Balanced", "Expert", "Research Paper"] as const;
 type ProductMode = typeof PRODUCT_MODES[number];
-type AnswerStyle = typeof ANSWER_STYLES[number];
 
 
 function inferIntentLabel(text: string, message?: Message): string {
@@ -1774,7 +1772,6 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
   const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
   const [connectionNotice, setConnectionNotice] = useState<string | null>(null);
   const [productMode, setProductMode] = useState<ProductMode>("Student");
-  const [answerStyle, setAnswerStyle] = useState<AnswerStyle>("Balanced");
   const [chatSearch, setChatSearch] = useState("");
   const [pinnedSessions, setPinnedSessions] = useState<string[]>([]);
   const [listening, setListening] = useState(false);
@@ -2325,7 +2322,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         body: JSON.stringify({
           user_id: uid,
           session_id: currentSession,
-          query: `${backendQuery}\n\n[Credon UX preferences] Product mode: ${productMode}. Answer style: ${answerStyle}. Automatically choose the best response layout (table/timeline/checklist/code/report) when useful.`,
+          query: `${backendQuery}\n\n[Credon UX preferences] Product mode: ${productMode}. Automatically choose the best response layout (table/timeline/checklist/code/report) from the user intent when useful.`,
           language: "auto",
           model: selectedModel || undefined,
           use_web: useWeb,
@@ -2579,7 +2576,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
             body: JSON.stringify({
               user_id: uid,
               session_id: currentSession,
-              query: `${backendQuery}\n\n[Credon UX preferences] Product mode: ${productMode}. Answer style: ${answerStyle}.`,
+              query: `${backendQuery}\n\n[Credon UX preferences] Product mode: ${productMode}. Choose the response format from the user intent.`,
               language: "auto",
               model: selectedModel || undefined,
               use_web: true,
@@ -3381,15 +3378,6 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
 
                     {m.role === "assistant" && m.metadata?.mode?.master_mode && !m.streaming && (
                       <p className="mt-1 text-[11px] text-cyan-300/90">Master Mode response: deep reasoning + sources + code optimization</p>
-                    )}
-
-                    {m.role === "assistant" && !m.streaming && m.text !== GREET && (
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-xl border border-zinc-800/60 bg-zinc-950/35 px-2 py-1.5">
-                        <span className="text-[10px] uppercase tracking-wide text-zinc-500">Answer style</span>
-                        {ANSWER_STYLES.map((style) => (
-                          <button key={style} type="button" onClick={() => { setAnswerStyle(style); void send(`Rewrite the previous answer in ${style} style without changing the facts.`, { replyContext: m.text }); }} className={`rounded-lg px-2 py-1 text-[10px] transition ${answerStyle === style ? "bg-cyan-500/15 text-cyan-200" : "text-zinc-500 hover:bg-zinc-800/70 hover:text-zinc-200"}`}>{style}</button>
-                        ))}
-                      </div>
                     )}
 
                     {/* Actions row */}
