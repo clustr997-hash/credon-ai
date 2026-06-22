@@ -2774,47 +2774,56 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       setThinkingStage(null);
       setLiveThinking("");
 
-      // Auto-retry once with sync (non-streaming) endpoint as fallback
+      // Auto-retry the sync (non-streaming) endpoint with exponential backoff.
+      // A failed stream is usually a Render cold start, so backoff gives the
+      // backend time to wake before we surface a hard error.
       if (!isRegenerate) {
-        try {
-          const retryRes = await fetch(`${API}/api/v1/chat`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              user_id: uid,
-              session_id: currentSession,
-              query: backendQuery,
-              metadata: {
-                product_mode: productMode,
-                answer_style: answerStyle,
-                layout_preference: "auto",
-              },
-              language: "auto",
-              model: selectedModel || undefined,
-              use_web: true,
-              deep_think: false,
-            }),
-          });
-          if (retryRes.ok) {
-            const data = await retryRes.json();
-            if (data.answer && data.answer.length > 20) {
-              setMessages((prev) => [...prev, {
-                role: "assistant" as const,
-                text: stripSuggestionSection(data.answer),
-                sources: data.sources || [],
-                images: data.images || [],
-                suggestions: data.suggestions || [],
-                thinking: data.thinking || "",
-                confidence: data.confidence || "medium",
-                timestamp: Date.now(),
-              }]);
-              void loadSessions();
-              return;
+        const backoffsMs = [1000, 2000, 4000];
+        for (let attempt = 0; attempt < backoffsMs.length; attempt++) {
+          if (attempt > 0) setThinkingStage("composing");
+          try {
+            const retryRes = await fetch(`${API}/api/v1/chat`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                user_id: uid,
+                session_id: currentSession,
+                query: backendQuery,
+                metadata: {
+                  product_mode: productMode,
+                  answer_style: answerStyle,
+                  layout_preference: "auto",
+                },
+                language: "auto",
+                model: selectedModel || undefined,
+                use_web: true,
+                deep_think: false,
+              }),
+            });
+            if (retryRes.ok) {
+              const data = await retryRes.json();
+              if (data.answer && data.answer.length > 20) {
+                setThinkingStage(null);
+                setMessages((prev) => [...prev, {
+                  role: "assistant" as const,
+                  text: stripSuggestionSection(data.answer),
+                  sources: data.sources || [],
+                  images: data.images || [],
+                  suggestions: data.suggestions || [],
+                  thinking: data.thinking || "",
+                  confidence: data.confidence || "medium",
+                  timestamp: Date.now(),
+                }]);
+                void loadSessions();
+                return;
+              }
             }
+          } catch {
+            // This attempt failed — fall through to backoff/next attempt.
           }
-        } catch {
-          // Retry also failed — fall through to helpful message
+          await new Promise((resolve) => window.setTimeout(resolve, backoffsMs[attempt]));
         }
+        setThinkingStage(null);
 
         // Final fallback: show a helpful message
         setMessages((prev) => [...prev, {

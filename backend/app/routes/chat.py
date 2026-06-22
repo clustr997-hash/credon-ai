@@ -570,16 +570,33 @@ def _is_visual_query_local(query: str) -> bool:
 
 
 
+_IMAGE_NOUN = r"(?:image|images|photo|photos|picture|pictures|pic|pics|wallpaper|wallpapers|logo|logos|poster|posters)"
+
+
 def _is_direct_image_request(query: str) -> bool:
     q = query.lower().strip()
-    if re.search(r"\b(show|find|get|display|search)\b.*\b(image|images|photo|photos|picture|pictures|wallpaper|logo)\b", q):
+    # "analyze this image / what's in the photo" refers to an attached file (vision),
+    # not an image *search* — leave those to the normal vision/answer path.
+    if re.search(rf"\b(this|that|the|my|uploaded|attached|above)\s+{_IMAGE_NOUN}\b", q):
+        return False
+    # Explicit request verb + an image noun anywhere: "give me an Ironman image", "send a cat pic".
+    if re.search(rf"\b(show|find|get|display|search|give|send|share|fetch|want|need|generate|create|make|draw)\b.*\b{_IMAGE_NOUN}\b", q):
         return True
-    if re.search(r"\b(image|photo|picture|wallpaper)\s+(of|for)\b", q):
+    # "image of/for X", "photo on X".
+    if re.search(rf"\b{_IMAGE_NOUN}\s+(of|for|on)\b", q):
+        return True
+    # Short noun-phrase requests ending in an image word: "ironman image", "cute cat pics".
+    if re.search(rf"\b{_IMAGE_NOUN}\s*$", q) and len(q.split()) <= 8:
         return True
     return False
 
 def _image_search_query(query: str) -> str:
-    q = re.sub(r"\b(please|show|find|get|display|search|me|some|images?|photos?|pictures?|wallpaper)\b", " ", query, flags=re.IGNORECASE)
+    q = re.sub(
+        r"\b(please|show|find|get|display|search|give|send|share|fetch|want|need|generate|create|make|draw|me|a|an|some|the|of|for|on|images?|photos?|pictures?|pics?|wallpapers?|logos?|posters?)\b",
+        " ",
+        query,
+        flags=re.IGNORECASE,
+    )
     q = re.sub(r"\s+", " ", q).strip(" ?.,:-")
     return q or query.strip()
 
