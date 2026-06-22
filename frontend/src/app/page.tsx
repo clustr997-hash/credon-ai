@@ -16,6 +16,21 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
   GoogleAuthProvider,
   onAuthStateChanged,
   sendPasswordResetEmail,
@@ -395,6 +410,97 @@ function extractCodeFromPre(children: ReactNode): string {
   const codeChild = childProps.children;
   if (Array.isArray(codeChild)) return codeChild.join("").trim();
   return String(codeChild ?? "").trim();
+}
+
+/* ─────────────────────────── Chart blocks ─────────────────────────── */
+
+type ChartDataset = { label: string; data: number[]; color?: string };
+type ParsedChart = {
+  type?: "bar" | "line" | "pie";
+  title?: string;
+  labels: string[];
+  datasets: ChartDataset[];
+};
+
+const CHART_COLORS = ["#00d2ff", "#7b61ff", "#ff6b6b", "#ffd93d", "#6bcb77"];
+
+/** Parse a fenced ```chart JSON block emitted by the model. */
+function parseChartBlock(text: string): ParsedChart | null {
+  const match = text.match(/```chart\s*\n([\s\S]*?)```/);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[1].trim()) as ParsedChart;
+    if (!Array.isArray(parsed.labels) || !Array.isArray(parsed.datasets) || parsed.datasets.length === 0) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/** Remove model-emitted ```chart / ```image_search blocks from displayed markdown. */
+function stripSpecialBlocks(text: string): string {
+  return text
+    .replace(/```chart\s*\n[\s\S]*?```/g, "")
+    .replace(/```image_search\s*\n[\s\S]*?```/g, "")
+    // drop a trailing unterminated block while still streaming
+    .replace(/```(?:chart|image_search)[\s\S]*$/g, "")
+    .trimEnd();
+}
+
+function ChartBlock({ chart }: { chart: ParsedChart }) {
+  const type: "bar" | "line" | "pie" = chart.type === "line" || chart.type === "pie" ? chart.type : "bar";
+  const data = chart.labels.map((label, i) => {
+    const row: Record<string, string | number> = { name: label };
+    chart.datasets.forEach((ds) => {
+      row[ds.label] = Number(ds.data[i] ?? 0);
+    });
+    return row;
+  });
+  const tooltipStyle = { background: "#1a1a2e", border: "none", borderRadius: 8, fontSize: 12, color: "#fff" };
+  const pieKey = chart.datasets[0]?.label ?? "value";
+
+  return (
+    <div className="mt-4 w-full rounded-xl border border-zinc-800/70 bg-zinc-950/50 p-4">
+      {chart.title && <p className="mb-2 text-sm text-cyan-300">{chart.title}</p>}
+      <ResponsiveContainer width="100%" height={240}>
+        {type === "line" ? (
+          <LineChart data={data} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+            <XAxis dataKey="name" stroke="#888" fontSize={11} />
+            <YAxis stroke="#888" fontSize={11} />
+            <Tooltip contentStyle={tooltipStyle} />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            {chart.datasets.map((ds, i) => (
+              <Line key={ds.label} type="monotone" dataKey={ds.label} stroke={ds.color || CHART_COLORS[i % CHART_COLORS.length]} strokeWidth={2} dot={false} />
+            ))}
+          </LineChart>
+        ) : type === "pie" ? (
+          <PieChart>
+            <Pie data={data} dataKey={pieKey} nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+              {data.map((_, i) => (
+                <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip contentStyle={tooltipStyle} />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+          </PieChart>
+        ) : (
+          <BarChart data={data} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+            <XAxis dataKey="name" stroke="#888" fontSize={11} />
+            <YAxis stroke="#888" fontSize={11} />
+            <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            {chart.datasets.map((ds, i) => (
+              <Bar key={ds.label} dataKey={ds.label} fill={ds.color || CHART_COLORS[i % CHART_COLORS.length]} radius={[4, 4, 0, 0]} />
+            ))}
+          </BarChart>
+        )}
+      </ResponsiveContainer>
+    </div>
+  );
 }
 
 /* ─────────────────────────── Credon Logo Component ─────────────────────────── */
@@ -956,7 +1062,11 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
           {/* Web Search Toggle */}
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-zinc-200"><span className="text-base" role="img" aria-label="globe">🌐</span> Web Search</p>
+              <p className="flex items-center gap-2 text-sm font-medium text-zinc-200"><span className="text-base" role="img" aria-label="globe">🌐</span> Web Search
+                {!isGuest && webSearch && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />Active</span>
+                )}
+              </p>
               <p className="text-xs text-zinc-500">Search the internet for up-to-date answers</p>
             </div>
             <button
@@ -977,7 +1087,11 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
           {/* Deep Think Toggle */}
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-zinc-200"><span className="text-base" role="img" aria-label="brain">🧠</span> Deep Think</p>
+              <p className="flex items-center gap-2 text-sm font-medium text-zinc-200"><span className="text-base" role="img" aria-label="brain">🧠</span> Deep Think
+                {!isGuest && deepThink && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/15 px-2 py-0.5 text-[10px] font-medium text-purple-300"><span className="h-1.5 w-1.5 rounded-full bg-purple-400 animate-pulse" />Active — slower</span>
+                )}
+              </p>
               <p className="text-xs text-zinc-500">More thorough analysis (may take longer)</p>
             </div>
             <button
@@ -998,7 +1112,11 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
           {/* Code Mode Toggle */}
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-zinc-200"><span className="text-base font-bold" aria-hidden> &lt;/&gt; </span> Code Mode</p>
+              <p className="flex items-center gap-2 text-sm font-medium text-zinc-200"><span className="text-base font-bold" aria-hidden> &lt;/&gt; </span> Code Mode
+                {!isGuest && codeMode && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] font-medium text-blue-300"><span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />Active</span>
+                )}
+              </p>
               <p className="text-xs text-zinc-500">Prefer runnable code-first answers</p>
             </div>
             <button
@@ -1048,7 +1166,12 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
           </div>
 
           <div className={`rounded-xl border px-3 py-2 ${masterMode ? "border-cyan-500/35 bg-cyan-500/10" : "border-zinc-700/50 bg-zinc-900/40"}`}>
-            <p className="text-sm font-medium text-zinc-200">Master Mode</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium text-zinc-200">Master Mode</p>
+              {masterMode && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-linear-to-r from-cyan-500 to-purple-500 px-2.5 py-0.5 text-[10px] font-semibold text-white shadow-sm shadow-cyan-500/30">Master Mode Unlocked ⚡</span>
+              )}
+            </div>
             <p className="text-xs text-zinc-500 mt-0.5">
               {masterMode
                 ? "Active: Web Search + DeepThink + Code Mode. Best for deep coding answers with reasoning and sources."
@@ -1204,11 +1327,11 @@ function PrivacyModal({ open, onClose }: { open: boolean; onClose: () => void })
           </button>
         </div>
         <div className="px-6 py-5 overflow-y-auto flex-1 space-y-4 text-sm text-zinc-300 leading-relaxed">
-          <p><strong className="text-white">Last updated:</strong> March 2026</p>
-          <div><h3 className="text-white font-semibold mb-1">What is stored</h3><p className="text-zinc-400">Credon stores account email, chat messages, saved preferences, uploaded file metadata, and generated sources so your assistant can continue a useful conversation.</p></div>
-          <div><h3 className="text-white font-semibold mb-1">Temporary vs memory</h3><p className="text-zinc-400">Current chat context is temporary, recent session topics help continuity, and long-term memory should only keep explicit preferences. Draft prompts are cached locally in your browser.</p></div>
-          <div><h3 className="text-white font-semibold mb-1">Files and deletion</h3><p className="text-zinc-400">PDFs and images are extracted for searchable chunks. Deleting a chat or account should remove related messages and file references where supported by the backend.</p></div>
-          <div><h3 className="text-white font-semibold mb-1">Security</h3><p className="text-zinc-400">We use Firebase Auth and encrypted storage. Your data is protected by industry-standard security.</p></div>
+          <p><strong className="text-white">Last updated:</strong> June 2026</p>
+          <div><h3 className="text-white font-semibold mb-1">What is stored</h3><p className="text-zinc-400">Credon stores your account email, chat messages, uploaded knowledge (PDFs and text), your memory profile (topics and preferences), download history, and your profile avatar so your assistant can continue a useful, personalized conversation.</p></div>
+          <div><h3 className="text-white font-semibold mb-1">Memory policy</h3><p className="text-zinc-400">Credon builds a preference profile from your messages to personalize responses. Current chat context is temporary, recent session topics help continuity, and long-term memory keeps explicit preferences. You can delete your memory profile in Settings.</p></div>
+          <div><h3 className="text-white font-semibold mb-1">File retention</h3><p className="text-zinc-400">Uploaded PDFs and images are extracted into searchable chunks and stored linked to your account. Deleting a chat or your account removes related messages and uploaded files where supported by the backend.</p></div>
+          <div><h3 className="text-white font-semibold mb-1">Security</h3><p className="text-zinc-400">We use Firebase Auth, Firestore security rules, and Firebase Storage rules that restrict access to authenticated users only. Your data is protected by industry-standard security.</p></div>
           <div><h3 className="text-white font-semibold mb-1">AI limitations</h3><p className="text-zinc-400">AI answers can be wrong or incomplete. Verify medical, legal, financial, and current-event information with trusted sources.</p></div>
           <div><h3 className="text-white font-semibold mb-1">Your Rights</h3><p className="text-zinc-400">Delete your account and data anytime. Guest sessions are cleaned up periodically.</p></div>
           <div><h3 className="text-white font-semibold mb-1">Contact</h3><p className="text-zinc-400">privacy@credon.ai</p></div>
@@ -1234,17 +1357,21 @@ function UpdatesModal({ open, onClose }: { open: boolean; onClose: () => void })
         </div>
         <div className="px-6 py-5 overflow-y-auto space-y-3 text-sm">
           <div className="rounded-xl border border-cyan-500/25 bg-cyan-500/10 p-3">
-            <p className="text-cyan-200 font-medium">Performance and quality improvements are active</p>
-            <p className="text-xs text-zinc-300 mt-1">Credon now applies stronger follow-up understanding, faster recent-query caching, better detail control, and improved PDF workflows.</p>
+            <div className="flex items-center gap-2">
+              <p className="text-cyan-200 font-medium">Version 1.2.0</p>
+              <span className="rounded-full bg-zinc-900/70 px-2 py-0.5 text-[10px] text-zinc-400">June 2026</span>
+            </div>
+            <p className="text-xs text-zinc-300 mt-1">Charts, Streaming &amp; Personalization — Credon Alpha 1.</p>
           </div>
           <div className="rounded-xl border border-zinc-700/50 bg-zinc-900/50 p-3">
             <p className="text-white font-medium">What is new</p>
             <ul className="mt-2 space-y-1.5 text-xs text-zinc-300">
-              <li>Smarter follow-up handling for context-bridge prompts like &quot;for mobile&quot; or &quot;in short&quot;.</li>
-              <li>Intent-aware outputs: short/brief vs detailed/deep formats.</li>
-              <li>News prompts auto-shape into top updates format.</li>
-              <li>Session-level PDF view/download from settings.</li>
-              <li>Push status messaging is now cleaner and user-friendly.</li>
+              <li>AI now renders charts and tables automatically.</li>
+              <li>Real-time streaming responses, word by word.</li>
+              <li>Friendlier, tone-aware conversational style with emoji support.</li>
+              <li>AI remembers your topics and personalizes answers.</li>
+              <li>Master Mode badge and live status indicators in Settings.</li>
+              <li>Improved PDF export and session-level view/download.</li>
             </ul>
           </div>
         </div>
@@ -3401,6 +3528,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                         );
                       })()}
                       {m.role === "assistant" && m.text !== GREET ? (
+                        <>
                         <div className="prose prose-invert prose-sm max-w-none text-[var(--answer-size)] leading-relaxed [&_pre]:bg-zinc-900/80 [&_pre]:border [&_pre]:border-zinc-700/30 [&_pre]:rounded-xl [&_pre]:p-3 [&_pre]:overflow-x-auto [&_code]:text-cyan-300 [&_code]:text-[13px] [&_a]:text-cyan-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-cyan-500/30 hover:[&_a]:decoration-cyan-500 [&_h1]:text-xl [&_h1]:tracking-tight [&_h2]:text-lg [&_h2]:tracking-tight [&_h3]:text-base [&_h1]:font-bold [&_h2]:font-semibold [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_li]:my-1 [&_blockquote]:border-l-2 [&_blockquote]:border-cyan-500/40 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-zinc-300 [&_table]:border-collapse [&_th]:border [&_th]:border-zinc-700 [&_th]:px-3 [&_th]:py-1.5 [&_th]:bg-zinc-800 [&_td]:border [&_td]:border-zinc-700 [&_td]:px-3 [&_td]:py-1.5 [&_hr]:border-zinc-700/50 [&_strong]:text-zinc-100 [&_strong]:font-semibold [&_strong]:bg-cyan-400/10 [&_strong]:px-1.5 [&_strong]:py-0.5 [&_strong]:rounded-md [&_li]:marker:text-cyan-300 [&_p:first-of-type]:text-zinc-100 [&_p:first-of-type]:font-medium">
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm, remarkMath]}
@@ -3424,10 +3552,12 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                               },
                             }}
                           >
-                            {m.text || (m.streaming ? "\u200B" : "")}
+                            {stripSpecialBlocks(m.text) || (m.streaming ? "\u200B" : "")}
                           </ReactMarkdown>
                           {m.streaming && <span className="inline-block w-2 h-4 bg-cyan-400 animate-pulse rounded-sm ml-0.5 align-text-bottom" />}
                         </div>
+                        {(() => { const chart = parseChartBlock(m.text); return chart ? <ChartBlock chart={chart} /> : null; })()}
+                        </>
                       ) : (
                         <div className="prose prose-invert prose-sm max-w-none text-[15px] leading-relaxed">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
