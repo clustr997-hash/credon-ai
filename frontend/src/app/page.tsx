@@ -548,7 +548,7 @@ function CredonLoadingLogo({ label = "Credon is thinking" }: { label?: string })
       aria-label={label}
       role="status"
     >
-      <CredonLogo size={22} className="animate-spin [animation-duration:1.4s] [animation-timing-function:linear]" />
+      <CredonLogo size={22} className="animate-[spin_1.5s_linear_infinite,pulse_1s_ease-in-out_infinite] [animation-timing-function:linear]" />
     </div>
   );
 }
@@ -567,9 +567,9 @@ function ProgressDots({ stage }: { stage: ThinkingStage }) {
         <div className="flex items-center gap-3">
           {/* Animated dots that cycle 1→2→3→1 */}
           <div className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-dot-1" />
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-dot-2" />
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-dot-3" />
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-[bounce_1s_infinite]" />
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-[bounce_1s_infinite_0.2s]" />
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-[bounce_1s_infinite_0.4s]" />
           </div>
           <span className="text-sm text-zinc-300">
             {stage ? labels[stage] || "Thinking" : "Thinking"}
@@ -3842,9 +3842,9 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                   <div className="bg-zinc-800/80 border border-zinc-700/40 rounded-2xl rounded-tl-md px-5 py-4">
                     <div className="flex items-center gap-2">
                       <div className="flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-dot-1" />
-                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-dot-2" />
-                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-dot-3" />
+                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-[bounce_1s_infinite]" />
+                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-[bounce_1s_infinite_0.2s]" />
+                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-[bounce_1s_infinite_0.4s]" />
                       </div>
                       <span className="text-xs text-zinc-500">Thinking</span>
                     </div>
