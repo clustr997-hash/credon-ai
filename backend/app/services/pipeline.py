@@ -71,31 +71,42 @@ def generate_pipeline_stream(
 
     had_output = False
     in_plan = False
-    plan_buffer = ""
+    buffer = ""
 
     for token in generate_stream(msgs, model=model):
         had_output = True
+        buffer += token
 
-        # State machine to strip <plan> tags
-        if not in_plan and "<plan>" in token:
-            parts = token.split("<plan>", 1)
-            if parts[0]:
-                yield parts[0]
-            in_plan = True
-            token = parts[1]
+        # State machine to strip <plan> tags with robust buffering
+        while True:
+            if not in_plan:
+                if "<plan>" in buffer:
+                    parts = buffer.split("<plan>", 1)
+                    if parts[0]:
+                        yield parts[0]
+                    in_plan = True
+                    buffer = parts[1]
+                else:
+                    # Keep the last 5 characters in case they are the start of "<plan>"
+                    if len(buffer) < 6:
+                        break
+                    yield buffer[:-5]
+                    buffer = buffer[-5:]
+                    break
+            else:
+                if "</plan>" in buffer:
+                    parts = buffer.split("</plan>", 1)
+                    in_plan = False
+                    buffer = parts[1].lstrip()
+                else:
+                    # Drop everything inside the plan except the last 6 characters
+                    # in case they are the start of "</plan>"
+                    if len(buffer) >= 7:
+                        buffer = buffer[-6:]
+                    break
 
-        if in_plan:
-            plan_buffer += token
-            if "</plan>" in plan_buffer:
-                in_plan = False
-                parts = plan_buffer.split("</plan>", 1)
-                plan_buffer = ""
-                # We yield the part after </plan>
-                if len(parts) > 1 and parts[1].strip():
-                    yield parts[1].lstrip()
-            continue
-
-        yield token
+    if buffer and not in_plan:
+        yield buffer
 
     if not had_output:
         yield _fallback_answer(query, sources, target_language)
