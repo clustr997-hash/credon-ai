@@ -32,6 +32,7 @@ from app.services.generation_v2 import (
     think_about_sources_stream,
     generate_followup_from_context,
 )
+from app.services.pipeline import generate_pipeline_stream
 from app.services.models import list_available_models
 from app.services.retrieval_v2 import retrieve_sources, search_images
 from app.services.credon_brain import (
@@ -1194,6 +1195,21 @@ def chat(payload: ChatRequest) -> ChatResponse:
             metadata={"routing": {"selected_route": "followup_generation", "reason": "contextual_followup", "score": 1.0}},
         )
 
+    from app.services.conversation_health import enforce_three_turn_rule_if_applicable
+    health_stop = enforce_three_turn_rule_if_applicable(cleaned_query, transcript)
+    if health_stop:
+        save_message(payload.user_id, payload.session_id, "assistant", health_stop)
+        elapsed = int((perf_counter() - start) * 1000)
+        return ChatResponse(
+            answer=health_stop,
+            language=target_language,
+            confidence="high",
+            sources=[],
+            images=[],
+            latency_ms=elapsed,
+            metadata={"routing": {"selected_route": "conversation_health_stop", "reason": "three_turn_rule", "score": 1.0}},
+        )
+
     profile_update = profile_update_acknowledgement(cleaned_query, transcript, target_language)
     if profile_update:
         save_message(payload.user_id, payload.session_id, "assistant", profile_update)
@@ -1629,6 +1645,16 @@ def chat_stream(payload: ChatRequest):
 
         return StreamingResponse(_attachment_events(), media_type="text/event-stream")
 
+    from app.services.conversation_health import enforce_three_turn_rule_if_applicable
+    health_stop = enforce_three_turn_rule_if_applicable(cleaned_query, transcript)
+    if health_stop:
+        save_message(payload.user_id, payload.session_id, "assistant", health_stop)
+        elapsed = int((perf_counter() - start) * 1000)
+        def _health_events():
+            yield f"data: {_json.dumps({'type': 'token', 'content': health_stop})}\n\n"
+            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed, 'metadata': {'routing': {'selected_route': 'conversation_health_stop_stream', 'reason': 'three_turn_rule', 'score': 1.0}}})}\n\n"
+        return StreamingResponse(_health_events(), media_type="text/event-stream")
+
     if followup_mode and reply_context and not _is_pdf_reference_query(cleaned_query):
         chosen_model = payload.model or _choose_internal_model(cleaned_query, False)
         answer_text = _clean_answer(
@@ -1939,10 +1965,13 @@ def chat_stream(payload: ChatRequest):
         full_answer: list[str] = []
         token_budget_sec = 15 if not payload.deep_think else 45
         budget_started = perf_counter()
-        for token in generate_answer_stream(
-            working_query, results, target_language,
-            model=chosen_model, thinking=thinking,
-            product_mode=product_mode, answer_style=answer_style,
+        for token in generate_pipeline_stream(
+            query=working_query,
+            sources=results,
+            target_language=target_language,
+            transcript=transcript,
+            model=chosen_model,
+            context=reply_context
         ):
             full_answer.append(token)
             yield f"data: {_json.dumps({'type': 'token', 'content': token})}\n\n"
