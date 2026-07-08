@@ -626,6 +626,9 @@ function ThinkingBlock({ thinking, durationSec, streaming }: { thinking: string;
 
   if (!thinking) return null;
 
+  const strippedThinking = thinking.replace(/<plan>[\s\S]*?(?:<\/plan>|$)/gi, '').trim();
+  if (!strippedThinking && !streaming) return null;
+
   const displaySeconds = streaming ? liveSeconds : (durationSec ?? 0);
 
   return (
@@ -656,7 +659,7 @@ function ThinkingBlock({ thinking, durationSec, streaming }: { thinking: string;
           ref={scrollRef}
           className="mt-2 text-[13px] text-zinc-400/80 border-l-2 border-zinc-700/50 pl-4 ml-2 leading-relaxed whitespace-pre-wrap max-h-80 overflow-y-auto"
         >
-          {thinking}
+          {strippedThinking}
           {streaming && <span className="animate-cursor" />}
         </div>
       )}
