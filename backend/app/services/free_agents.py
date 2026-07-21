@@ -90,6 +90,27 @@ def _geocode_location(location: str) -> dict[str, Any] | None:
     return results[0] if results else None
 
 
+def _reverse_geocode(latitude: float, longitude: float) -> str | None:
+    try:
+        resp = requests.get(
+            "https://nominatim.openstreetmap.org/reverse",
+            params={"lat": latitude, "lon": longitude, "format": "jsonv2", "zoom": 10},
+            headers={"User-Agent": "CredonAI/1.0 (location label for weather answers)"},
+            timeout=8,
+        )
+        resp.raise_for_status()
+        address = resp.json().get("address") or {}
+        parts = [
+            address.get("city") or address.get("town") or address.get("village") or address.get("county"),
+            address.get("state"),
+            address.get("country"),
+        ]
+        label = ", ".join(str(x) for x in parts if x)
+        return label or None
+    except Exception:
+        return None
+
+
 def weather_answer(query: str, language: str, latitude: float | None = None, longitude: float | None = None) -> tuple[str, list[dict[str, str]], dict[str, Any]] | None:
     if not is_weather_query(query):
         return None
@@ -105,6 +126,8 @@ def weather_answer(query: str, language: str, latitude: float | None = None, lon
             location_label = ", ".join(str(x) for x in [geo.get("name"), geo.get("admin1"), geo.get("country")] if x)
         if latitude is None or longitude is None:
             return None
+        if not loc:
+            location_label = _reverse_geocode(latitude, longitude) or location_label
         resp = requests.get(
             "https://api.open-meteo.com/v1/forecast",
             params={
@@ -160,35 +183,55 @@ def _news_topic(query: str) -> str:
     return q or "technology OR artificial intelligence OR world"
 
 
+def _news_scope_queries(query: str, topic: str) -> list[tuple[str, str]]:
+    q = query.lower()
+    wants_broad = any(word in q for word in ["national", "state", "district", "local", "international", "all news", "all updates"])
+    if not wants_broad:
+        return [("Top", topic)]
+
+    # No-key broad coverage. Users can include a state/district/city in the topic; otherwise India is used as the national anchor.
+    local_topic = topic if topic and topic != "technology OR artificial intelligence OR world" else "India"
+    return [
+        ("National", f"India {local_topic}"),
+        ("State / local", local_topic),
+        ("International", f"world {topic}"),
+    ]
+
+
 def news_answer(query: str, language: str, max_items: int = 6) -> tuple[str, list[dict[str, str]], dict[str, Any]] | None:
     if not is_news_query(query):
         return None
     topic = _news_topic(query)
-    try:
-        resp = requests.get(
-            "https://api.gdeltproject.org/api/v2/doc/doc",
-            params={
-                "query": topic,
-                "mode": "ArtList",
-                "format": "json",
-                "maxrecords": max_items,
-                "sort": "HybridRel",
-            },
-            timeout=10,
-        )
-        resp.raise_for_status()
-        articles = resp.json().get("articles") or []
-    except Exception:
-        articles = []
-
     clean_articles: list[dict[str, str]] = []
-    for article in articles[:max_items]:
-        title = str(article.get("title") or "").strip()
-        url = str(article.get("url") or "").strip()
-        domain = str(article.get("domain") or "").strip()
-        seen = str(article.get("seendate") or "").strip()
-        if title and url:
-            clean_articles.append({"title": title, "url": url, "domain": domain, "seen": seen})
+    seen_urls: set[str] = set()
+    scope_queries = _news_scope_queries(query, topic)
+    per_scope = max(2, min(max_items, 4)) if len(scope_queries) > 1 else max_items
+    for scope, scope_query in scope_queries:
+        try:
+            resp = requests.get(
+                "https://api.gdeltproject.org/api/v2/doc/doc",
+                params={
+                    "query": scope_query,
+                    "mode": "ArtList",
+                    "format": "json",
+                    "maxrecords": per_scope,
+                    "sort": "HybridRel",
+                },
+                timeout=10,
+            )
+            resp.raise_for_status()
+            articles = resp.json().get("articles") or []
+        except Exception:
+            articles = []
+
+        for article in articles[:per_scope]:
+            title = str(article.get("title") or "").strip()
+            url = str(article.get("url") or "").strip()
+            domain = str(article.get("domain") or "").strip()
+            seen = str(article.get("seendate") or "").strip()
+            if title and url and url not in seen_urls:
+                seen_urls.add(url)
+                clean_articles.append({"title": title, "url": url, "domain": domain, "seen": seen, "scope": scope})
     if not clean_articles:
         return None
 
@@ -196,7 +239,8 @@ def news_answer(query: str, language: str, max_items: int = 6) -> tuple[str, lis
     lines = [f"## 📰 News Agent — latest results for {topic}", "", f"Checked: **{now}**", ""]
     for idx, article in enumerate(clean_articles, 1):
         source_note = f" — {article['domain']}" if article.get("domain") else ""
-        lines.append(f"{idx}. **{article['title']}**{source_note}")
+        scope_note = f"[{article.get('scope', 'Top')}] "
+        lines.append(f"{idx}. {scope_note}**{article['title']}**{source_note}")
     lines.extend([
         "",
         "**Why this answer is different:** Credon used a dedicated no-key News Agent before normal model generation, so fresh-news questions do not rely only on static model memory.",
@@ -210,6 +254,7 @@ def news_answer(query: str, language: str, max_items: int = 6) -> tuple[str, lis
     return "\n".join(lines), sources, {
         "agent": "news",
         "topic": topic,
+        "scopes": [scope for scope, _ in scope_queries],
         "tools": ["GDELT Doc API"],
         "freshness": now,
     }
