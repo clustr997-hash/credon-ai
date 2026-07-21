@@ -195,12 +195,14 @@ def _greeting_response(query: str, language: Literal["en", "hinglish"]) -> str |
     if _is_intro_query(query):
         if language == "hinglish":
             return (
-                "Main Credon AI hoon — main web research, concepts explain, coding help, math solve, aur documents/images analyze kar sakta hoon. "
-                "Aap koi bhi specific question bhejo, main step-by-step help karunga."
+                "Main Credon AI hoon — main internal plan/debug text user ko dikhaye bina natural answer deta hoon. "
+                "Main live free-data agents use kar sakta hoon: weather, news/headlines, time/date, image cards, web research, coding, math, PDFs, aur uploaded knowledge. "
+                "Try karo: `Pune ka weather`, `latest AI news`, `national aur international news`, `is PDF ko explain karo`, ya `mera code debug karo`."
             )
         return (
-            "I’m Credon AI — I can do web research, explain concepts, help with coding, solve math, and analyze documents/images. "
-            "Ask any specific question and I’ll help step by step."
+            "I’m Credon AI — I can answer naturally without showing internal plan/debug text. "
+            "I can use live free-data agents for weather, news/headlines, time/date, image cards, web research, coding, math, PDFs, and uploaded knowledge. "
+            "For example, ask `weather in Pune`, `latest AI news`, `show national and international news`, `explain this PDF`, or `debug my code`."
         )
 
     return None
@@ -638,7 +640,11 @@ def _image_response_metadata() -> dict[str, Any]:
     }
 
 def _clean_answer(text: str) -> str:
-    out = re.sub(r"\[(\d+)\]", "", text)
+    """Remove internal planner/debug text before an answer is shown or saved."""
+    out = re.sub(r"(?is)<plan\b[^>]*>.*?</plan>", "", text)
+    out = re.sub(r"(?is)</?plan\b[^>]*>", "", out)
+    out = re.sub(r"(?im)^\s*(Intent verified|Missing Information|Did I answer the user's actual question|Did I ignore important context|Am I repeating myself|Can this answer be shorter|Is a table better|Should I ask a follow-up question)\s*:?[^\n]*\n?", "", out)
+    out = re.sub(r"\[(\d+)\]", "", out)
     out = re.sub(r"\n{3,}", "\n\n", out)
     return out.strip()
 
