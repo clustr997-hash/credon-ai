@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from app.services.knowledge_store import ingest_knowledge_text, detect_query_subject
 from app.services.ocr_ingest import extract_text_from_pdf_bytes, ocr_image_bytes
+from app.services.image_vision import describe_image_bytes
 
 router = APIRouter()
 IngestResponse = dict[str, Any]
@@ -112,11 +113,14 @@ async def ingest_image(
     file: UploadFile = File(...),
 ) -> IngestResponse:
     raw = await file.read()
-    text = ocr_image_bytes(raw)
+    vision = describe_image_bytes(raw, prompt="Analyze this uploaded image for chat context.")
+    text = vision.get("ocr_text") or ocr_image_bytes(raw)
+    visual_context = vision.get("description", "")
+    index_text = "\n\n".join(part for part in [str(visual_context).strip(), str(text).strip()] if part)
 
-    if not text or text.startswith("[Image uploaded:"):
+    if not index_text or index_text.startswith("[Image uploaded:"):
         # Still store so the upload isn't lost
-        fallback_text = text or f"[Image uploaded: {file.filename or 'image'} — OCR returned no text]"
+        fallback_text = index_text or f"[Image uploaded: {file.filename or 'image'} — OCR returned no text]"
         document_id = f"img-{uuid4().hex[:10]}"
         stats = ingest_knowledge_text(
             user_id=user_id,
@@ -131,6 +135,10 @@ async def ingest_image(
             "filename": file.filename,
             "document_id": document_id,
             "chars": len(fallback_text),
+            "image_context": visual_context,
+            "ocr_text": vision.get("ocr_text", ""),
+            "vision_method": vision.get("method", "ocr_only"),
+            "vision_warning": vision.get("warning", ""),
             **stats,
         }
 
@@ -138,7 +146,7 @@ async def ingest_image(
     stats = ingest_knowledge_text(
         user_id=user_id,
         document_id=document_id,
-        text=text,
+        text=index_text,
         source_type="image",
         filename=file.filename or "uploaded-image",
     )
@@ -147,7 +155,11 @@ async def ingest_image(
         "ok": True,
         "filename": file.filename,
         "document_id": document_id,
-        "chars": len(text),
+        "chars": len(index_text),
+        "image_context": visual_context,
+        "ocr_text": vision.get("ocr_text", ""),
+        "vision_method": vision.get("method", "ocr_only"),
+        "vision_warning": vision.get("warning", ""),
         **stats,
     }
 

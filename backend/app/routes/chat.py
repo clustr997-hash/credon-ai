@@ -74,6 +74,36 @@ def _meta_str(metadata: dict[str, Any], key: str) -> str | None:
     return None
 
 
+def _user_profile_context(metadata: dict[str, Any]) -> str:
+    """Build a compact editable-memory block from frontend profile settings."""
+    raw = metadata.get("user_profile")
+    if not isinstance(raw, dict):
+        return ""
+    labels = {
+        "name": "Name",
+        "role": "Role/goal",
+        "subjects": "Subjects/topics",
+        "language": "Preferred language",
+        "style": "Preferred answer style",
+        "notes": "Extra preferences",
+    }
+    lines: list[str] = []
+    for key, label in labels.items():
+        value = raw.get(key)
+        if isinstance(value, str) and value.strip():
+            lines.append(f"{label}: {value.strip()[:240]}")
+    if not lines:
+        return ""
+    return "[USER_PROFILE]\n" + "\n".join(lines) + "\n[/USER_PROFILE]"
+
+
+def _with_user_profile(query: str, metadata: dict[str, Any]) -> str:
+    profile = _user_profile_context(metadata)
+    if not profile:
+        return query
+    return f"{profile}\n\nUser request: {query}"
+
+
 def _response_cache_key(
     *,
     user_id: str,
@@ -1093,6 +1123,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
     working_query = _contextual_query(cleaned_query, transcript)
     working_query, code_mode_active = _code_enhanced_query(working_query, payload.code_mode)
     working_query, intent_meta = _shape_query_for_user_intent(working_query, cleaned_query, transcript)
+    working_query = _with_user_profile(working_query, payload.metadata)
     cache_key = _response_cache_key(
         user_id=payload.user_id,
         query=cleaned_query,
@@ -1564,6 +1595,7 @@ def chat_stream(payload: ChatRequest):
     working_query = _contextual_query(cleaned_query, transcript)
     working_query, code_mode_active = _code_enhanced_query(working_query, payload.code_mode)
     working_query, intent_meta = _shape_query_for_user_intent(working_query, cleaned_query, transcript)
+    working_query = _with_user_profile(working_query, payload.metadata)
     cache_key = _response_cache_key(
         user_id=payload.user_id,
         query=cleaned_query,

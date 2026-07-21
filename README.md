@@ -116,6 +116,7 @@ Flow:
 - `OLLAMA_BASE_URL=http://localhost:11434`
 - `OLLAMA_MODEL=qwen3:8b`
 - `OLLAMA_EMBED_MODEL=nomic-embed-text`
+- `OLLAMA_VISION_MODEL=llava:latest` (optional local image-understanding model for uploads)
 - `USE_WEB_SEARCH=true`
 - `ENABLE_PAGE_EXTRACTION=false`
 

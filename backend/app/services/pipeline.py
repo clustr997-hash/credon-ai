@@ -20,6 +20,7 @@ Rules for the visible final response:
 3. Adapt length: concise for simple chat, detailed for complex tasks.
 4. Do not expose chain-of-thought, planner notes, XML tags, or debugging text.
 5. Avoid repetitive phrases like "Thank you", "I'll improve", or "I will try". Be action-oriented.
+6. For creative writing/story/comic continuation requests, continue the story immediately in the user's format. Do not merely suggest directions, summarize, or ask the user to choose.
 """
 
 def build_pipeline_messages(query: str, sources: list[dict[str, Any]], target_language: str, analysis: dict[str, Any], context: str = "") -> list[dict[str, str]]:
