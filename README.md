@@ -66,6 +66,9 @@ Credon retries local models automatically when the selected Ollama model fails.
 
 ## 4) OCR + Ingestion APIs
 
+Credon Vision Alpha adds image-understanding context for uploaded images by combining OCR, image metadata, optional local multimodal analysis via `OLLAMA_VISION_MODEL`, and Credon-specific context formatting. See `docs/credon-vision.md`.
+
+
 ### `POST /api/v1/ingest/pdf`
 
 Multipart form:
@@ -116,6 +119,7 @@ Flow:
 - `OLLAMA_BASE_URL=http://localhost:11434`
 - `OLLAMA_MODEL=qwen3:8b`
 - `OLLAMA_EMBED_MODEL=nomic-embed-text`
+- `OLLAMA_VISION_MODEL=llava:latest` (optional local image-understanding model for uploads)
 - `USE_WEB_SEARCH=true`
 - `ENABLE_PAGE_EXTRACTION=false`
 
