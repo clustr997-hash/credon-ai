@@ -2392,6 +2392,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
 
   const ingestAttachments = useCallback(async (files: PendingAttachment[]) => {
     const failures: string[] = [];
+    const imageContexts: string[] = [];
     await Promise.all(
       files.map(async (item) => {
         const form = new FormData();
@@ -2403,16 +2404,27 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
             method: "POST",
             body: form,
           });
-          const data: { ok?: boolean; error?: string } = await response.json();
+          const data: { ok?: boolean; error?: string; image_context?: string; ocr_text?: string; vision_method?: string; vision_warning?: string } = await response.json();
           if (!response.ok || data.ok === false) {
             failures.push(`${item.file.name}${data.error ? `: ${data.error}` : ""}`);
+          } else if (item.kind === "image") {
+            const visual = (data.image_context || "").trim();
+            const ocr = (data.ocr_text || "").trim();
+            const method = data.vision_method ? ` (${data.vision_method})` : "";
+            if (visual || ocr) {
+              imageContexts.push([
+                `[Uploaded image: ${item.file.name}${method}]`,
+                visual ? `Visual analysis: ${visual}` : "",
+                ocr ? `Readable text/OCR: ${ocr}` : "",
+              ].filter(Boolean).join("\n"));
+            }
           }
         } catch {
           failures.push(item.file.name);
         }
       })
     );
-    return failures;
+    return { failures, imageContexts };
   }, [uid]);
 
   /* ── Handle file selection ── */
@@ -2454,6 +2466,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     const wantsPdfExport = /\b(create|generate|make|export|download)\b.*\bpdf\b|\bpdf\b.*\b(create|generate|export|download)\b/i.test(q);
 
     const queuedFiles = [...attachedFiles];
+    let uploadedImageContexts: string[] = [];
     if (queuedFiles.length > 0) {
       setUploadingFiles(true);
       setUploadError(null);
@@ -2466,7 +2479,11 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
             ? "Reading image text and indexing context..."
             : "Indexing attachments..."
       );
-      const failedFiles = await ingestAttachments(queuedFiles);
+      const { failures: failedFiles, imageContexts } = await ingestAttachments(queuedFiles);
+      if (imageContexts.length > 0) {
+        uploadedImageContexts = imageContexts;
+        replyContext = [replyContext, ...imageContexts].filter(Boolean).join("\n\n");
+      }
       if (failedFiles.length > 0) {
         setUploadError(`Could not fully process: ${failedFiles.slice(0, 2).map(f => f.split(':')[0]).join(", ")}${failedFiles.length > 2 ? "..." : ""}. Files were saved — text may be limited.`);
       }
@@ -2481,7 +2498,9 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       setAttachedFiles([]);
       setMessages((prev) => [...prev, {
         role: "assistant",
-        text: "Your files were indexed. Ask a question and I’ll use them as context.",
+        text: uploadedImageContexts.length > 0
+          ? `I read the uploaded image directly.\n\n${uploadedImageContexts.join("\n\n")}\n\nAsk me what to do next — for example, continue the comic, improve the panel text, or generate Chapter 2.`
+          : "Your files were indexed. Ask a question and I’ll use them as context.",
         timestamp: Date.now(),
       }]);
       return;
