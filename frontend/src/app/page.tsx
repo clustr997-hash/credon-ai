@@ -2534,9 +2534,14 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     setLiveThinking("");
     setFollowUpsDismissed(false);
 
+    const attachmentContext = queuedFiles.length > 0
+      ? `\n\n[User attached ${queuedFiles.map((item) => `${item.kind.toUpperCase()}: ${item.file.name}`).join(", ")}]`
+      : "";
+
+    const backendQueryBase = `${q}${attachmentContext}`;
     const backendQuery = replyContext
-      ? `${q}\n\n[Replying to previous answer]: ${replyContext.slice(0, 700)}`
-      : q;
+      ? `${backendQueryBase}\n\n[Replying to previous answer]: ${replyContext.slice(0, 700)}`
+      : backendQueryBase;
 
     const detectedMode = detectProductMode(q);
     if (detectedMode !== productMode) setProductMode(detectedMode);

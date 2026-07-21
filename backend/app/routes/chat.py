@@ -49,7 +49,7 @@ from app.services.answer_validator import (
 )
 from app.services.push_store import save_user_push_token
 from app.services.push_notify import send_test_push
-from app.services.free_agents import manager_plan, news_answer, weather_answer
+from app.services.free_agents import manager_plan, news_answer, weather_answer, location_identity_answer
 from app.utils.language import detect_language
 from time import perf_counter, time
 
@@ -195,12 +195,14 @@ def _greeting_response(query: str, language: Literal["en", "hinglish"]) -> str |
     if _is_intro_query(query):
         if language == "hinglish":
             return (
-                "Main Credon AI hoon — main web research, concepts explain, coding help, math solve, aur documents/images analyze kar sakta hoon. "
-                "Aap koi bhi specific question bhejo, main step-by-step help karunga."
+                "Main Credon AI hoon — main internal plan/debug text user ko dikhaye bina natural answer deta hoon. "
+                "Main live free-data agents use kar sakta hoon: weather, news/headlines, time/date, image cards, web research, coding, math, PDFs, aur uploaded knowledge. "
+                "Try karo: `Pune ka weather`, `latest AI news`, `national aur international news`, `is PDF ko explain karo`, ya `mera code debug karo`."
             )
         return (
-            "I’m Credon AI — I can do web research, explain concepts, help with coding, solve math, and analyze documents/images. "
-            "Ask any specific question and I’ll help step by step."
+            "I’m Credon AI — I can answer naturally without showing internal plan/debug text. "
+            "I can use live free-data agents for weather, news/headlines, time/date, image cards, web research, coding, math, PDFs, and uploaded knowledge. "
+            "For example, ask `weather in Pune`, `latest AI news`, `show national and international news`, `explain this PDF`, or `debug my code`."
         )
 
     return None
@@ -638,7 +640,11 @@ def _image_response_metadata() -> dict[str, Any]:
     }
 
 def _clean_answer(text: str) -> str:
-    out = re.sub(r"\[(\d+)\]", "", text)
+    """Remove internal planner/debug text before an answer is shown or saved."""
+    out = re.sub(r"(?is)<plan\b[^>]*>.*?</plan>", "", text)
+    out = re.sub(r"(?is)</?plan\b[^>]*>", "", out)
+    out = re.sub(r"(?im)^\s*(Intent verified|Missing Information|Did I answer the user's actual question|Did I ignore important context|Am I repeating myself|Can this answer be shorter|Is a table better|Should I ask a follow-up question)\s*:?[^\n]*\n?", "", out)
+    out = re.sub(r"\[(\d+)\]", "", out)
     out = re.sub(r"\n{3,}", "\n\n", out)
     return out.strip()
 
@@ -1102,7 +1108,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
 
     agent_plan = manager_plan(cleaned_query, use_web=payload.use_web, deep_think=payload.deep_think, code_mode=payload.code_mode)
 
-    followup_mode = (
+    followup_mode = (not has_attachment_marker) and (
         _is_contextual_followup(cleaned_query)
         or _is_ambiguous_short_followup(cleaned_query)
         or _is_reference_followup(cleaned_query)
@@ -1154,13 +1160,11 @@ def chat(payload: ChatRequest) -> ChatResponse:
             cleaned_query = resolved
             followup_mode = False  # Treat as a fresh query
 
-    if has_attachment_marker and not reply_context and not followup_mode:
+    if has_attachment_marker and not cleaned_query.strip():
         attachment_message = (
-            "I can help with your image, but I currently received only an attachment marker, not the actual image bytes. "
-            "Please add a short description of what is in the image (or send an image URL), and I will explain it clearly."
+            "Your attachment was indexed. Ask what you want to know about it — for example, `describe this image`, `read the text`, or `summarize this PDF`."
             if target_language == "en"
-            else "Main image help kar sakta hoon, lekin abhi mujhe sirf attachment marker mila hai, actual image bytes nahi. "
-            "Image ka short description do (ya image URL bhejo), phir main clearly explain karunga."
+            else "Aapka attachment index ho gaya. Ab poochho kya jaana hai — jaise `is image ko describe karo`, `text read karo`, ya `PDF summarize karo`."
         )
         save_message(payload.user_id, payload.session_id, "assistant", attachment_message)
         elapsed = int((perf_counter() - start) * 1000)
@@ -1251,6 +1255,14 @@ def chat(payload: ChatRequest) -> ChatResponse:
             latency_ms=elapsed,
             metadata={"routing": {"selected_route": "personal_fallback", "reason": "profile_query", "score": 1.0}},
         )
+
+    location_identity = location_identity_answer(cleaned_query, target_language, payload.latitude, payload.longitude)
+    if location_identity:
+        location_reply, location_sources, location_meta = location_identity
+        metadata = {"routing": {"selected_route": "location_identity_agent", "reason": "browser_geolocation_or_location_request", "score": 1.0}, "agent_plan": agent_plan, **location_meta}
+        save_message(payload.user_id, payload.session_id, "assistant", location_reply, confidence="high" if location_sources else "medium", sources=location_sources, metadata=metadata)
+        elapsed = int((perf_counter() - start) * 1000)
+        return ChatResponse(answer=location_reply, language=target_language, confidence="high" if location_sources else "medium", sources=[Source(title=s["title"], url=s["url"]) for s in location_sources], images=[], suggestions=["Tell me my city too", "Show local weather", "Show local news"], thinking="Location Agent used browser coordinates with OpenStreetMap reverse geocoding." if location_sources else "Location Agent needs browser coordinates.", latency_ms=elapsed, metadata=metadata)
 
     news = news_answer(cleaned_query, target_language, max_items=_safe_int(intent_meta.get("news_top_n", 6), 6) or 6)
     if news:
@@ -1573,7 +1585,7 @@ def chat_stream(payload: ChatRequest):
 
     agent_plan = manager_plan(cleaned_query, use_web=payload.use_web, deep_think=payload.deep_think, code_mode=payload.code_mode)
 
-    followup_mode = (
+    followup_mode = (not has_attachment_marker) and (
         _is_contextual_followup(cleaned_query)
         or _is_ambiguous_short_followup(cleaned_query)
         or _is_reference_followup(cleaned_query)
@@ -1628,13 +1640,11 @@ def chat_stream(payload: ChatRequest):
             cleaned_query = resolved
             followup_mode = False
 
-    if has_attachment_marker and not reply_context and not followup_mode:
+    if has_attachment_marker and not cleaned_query.strip():
         attachment_message = (
-            "I can help with your image, but I currently received only an attachment marker, not the actual image bytes. "
-            "Please add a short description of what is in the image (or send an image URL), and I will explain it clearly."
+            "Your attachment was indexed. Ask what you want to know about it — for example, `describe this image`, `read the text`, or `summarize this PDF`."
             if target_language == "en"
-            else "Main image help kar sakta hoon, lekin abhi mujhe sirf attachment marker mila hai, actual image bytes nahi. "
-            "Image ka short description do (ya image URL bhejo), phir main clearly explain karunga."
+            else "Aapka attachment index ho gaya. Ab poochho kya jaana hai — jaise `is image ko describe karo`, `text read karo`, ya `PDF summarize karo`."
         )
         save_message(payload.user_id, payload.session_id, "assistant", attachment_message)
         elapsed = int((perf_counter() - start) * 1000)
@@ -1707,6 +1717,20 @@ def chat_stream(payload: ChatRequest):
             yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high', 'sources': [], 'images': [], 'latency_ms': elapsed, 'metadata': {'routing': {'selected_route': 'personal_fallback_stream', 'reason': 'profile_query', 'score': 1.0}}})}\n\n"
 
         return StreamingResponse(_personal_events(), media_type="text/event-stream")
+
+    location_identity = location_identity_answer(cleaned_query, target_language, payload.latitude, payload.longitude)
+    if location_identity:
+        location_reply, location_sources, location_meta = location_identity
+        metadata = {"routing": {"selected_route": "location_identity_agent_stream", "reason": "browser_geolocation_or_location_request", "score": 1.0}, "agent_plan": agent_plan, **location_meta}
+        save_message(payload.user_id, payload.session_id, "assistant", location_reply, confidence="high" if location_sources else "medium", sources=location_sources, metadata=metadata)
+        elapsed = int((perf_counter() - start) * 1000)
+
+        def _location_events():
+            yield f"data: {_json.dumps({'type': 'sources', 'sources': location_sources, 'confidence': 'high' if location_sources else 'medium', 'images': []})}\n\n"
+            yield f"data: {_json.dumps({'type': 'token', 'content': location_reply})}\n\n"
+            yield f"data: {_json.dumps({'type': 'done', 'confidence': 'high' if location_sources else 'medium', 'sources': location_sources, 'images': [], 'suggestions': ['Tell me my city too', 'Show local weather', 'Show local news'], 'latency_ms': elapsed, 'metadata': metadata})}\n\n"
+
+        return StreamingResponse(_location_events(), media_type="text/event-stream")
 
     news = news_answer(cleaned_query, target_language, max_items=_safe_int(intent_meta.get("news_top_n", 6), 6) or 6)
     if news:

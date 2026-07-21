@@ -66,6 +66,24 @@ def _normalize_text(text: str) -> str:
     return "\n".join(line.strip() for line in out.splitlines() if line.strip())
 
 
+def _image_visual_summary(image: Image.Image) -> str:
+    """Create a lightweight, local visual summary when no vision model is configured."""
+    w, h = image.size
+    thumb = image.resize((1, 1), Image.Resampling.BILINEAR)
+    r, g, b = thumb.getpixel((0, 0))
+    brightness = round((0.299 * r + 0.587 * g + 0.114 * b) / 255, 2)
+    orientation = "landscape" if w > h else "portrait" if h > w else "square"
+    colors = image.resize((64, 64), Image.Resampling.BILINEAR).getcolors(maxcolors=4096) or []
+    colors.sort(reverse=True, key=lambda item: item[0])
+    top_colors = [f"#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}" for _, rgb in colors[:5]]
+    return (
+        f"[Image uploaded: {w}x{h}px, {orientation}. "
+        f"Average color #{r:02x}{g:02x}{b:02x}; brightness {brightness}. "
+        f"Dominant palette: {', '.join(top_colors) or 'not available'}. "
+        "OCR text may be separate below. Object/character identification needs a configured vision model.]"
+    )
+
+
 # ── Public API ───────────────────────────────────────────────────
 
 def ocr_image_bytes(image_bytes: bytes) -> str:
@@ -87,13 +105,13 @@ def ocr_image_bytes(image_bytes: bytes) -> str:
                 cleaned2 = _normalize_text(text2)
                 if len(cleaned2) > len(cleaned):
                     return cleaned2
-            return cleaned
+            visual_summary = _image_visual_summary(image)
+            return f"{visual_summary}\n\nDetected text:\n{cleaned}" if cleaned else visual_summary
         except Exception as e:
             print(f"[OCR] Tesseract failed on image: {e}")
 
-    # Fallback: store dimensions so the upload isn't rejected
-    w, h = image.size
-    return f"[Image uploaded: {w}x{h}px — stored for reference. Text extraction requires Tesseract OCR setup.]"
+    # Fallback: store basic visual metadata so image questions have useful context.
+    return _image_visual_summary(image)
 
 
 def extract_text_from_pdf_bytes(pdf_bytes: bytes) -> dict[str, Any]:
