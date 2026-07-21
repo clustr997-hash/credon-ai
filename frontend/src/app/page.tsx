@@ -165,6 +165,24 @@ type SessionSummary = {
 
 type AuthTab = "signin" | "signup" | "forgot";
 
+type EditableMemoryProfile = {
+  name: string;
+  role: string;
+  subjects: string;
+  language: string;
+  style: string;
+  notes: string;
+};
+
+const EMPTY_MEMORY_PROFILE: EditableMemoryProfile = {
+  name: "",
+  role: "",
+  subjects: "",
+  language: "",
+  style: "",
+  notes: "",
+};
+
 /* ─────────────────────────── Constants ─────────────────────────── */
 
 function resolveApiBase(): string {
@@ -992,7 +1010,7 @@ function TtsPanel({
 
 /* ─────────────────────────── Settings Modal ─────────────────────────── */
 
-function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setDeepThink, codeMode, setCodeMode, appearance, setAppearance, fontScale, setFontScale, isGuest, onRequireLogin, onDownloadCurrentChat, onDownloadAllChats, onPreviewCurrentChat, onPreviewAllChats, onPreviewSessionPdf, onDownloadSessionPdf, recentSessions, fcmStatus, onEnableNotifications }: {
+function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setDeepThink, codeMode, setCodeMode, appearance, setAppearance, fontScale, setFontScale, memoryProfile, setMemoryProfile, clearMemoryProfile, isGuest, onRequireLogin, onDownloadCurrentChat, onDownloadAllChats, onPreviewCurrentChat, onPreviewAllChats, onPreviewSessionPdf, onDownloadSessionPdf, recentSessions, fcmStatus, onEnableNotifications }: {
   open: boolean;
   onClose: () => void;
   webSearch: boolean;
@@ -1005,6 +1023,9 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
   setAppearance: (v: "dark" | "midnight" | "contrast") => void;
   fontScale: "compact" | "comfortable" | "large";
   setFontScale: (v: "compact" | "comfortable" | "large") => void;
+  memoryProfile: EditableMemoryProfile;
+  setMemoryProfile: (profile: EditableMemoryProfile) => void;
+  clearMemoryProfile: () => void;
   isGuest: boolean;
   onRequireLogin: (feature: "web-search" | "deep-think" | "code-mode") => void;
   onDownloadCurrentChat: () => void;
@@ -1172,6 +1193,22 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
                 <option value="large">Large font</option>
               </select>
             </div>
+          </div>
+
+          <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3 space-y-3">
+            <div>
+              <p className="text-sm font-medium text-zinc-200">Editable Memory & Profile</p>
+              <p className="text-xs text-zinc-500">Keep this simple: Credon uses it quietly to personalize answers without adding mode buttons to chat.</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <input value={memoryProfile.name} onChange={(e) => setMemoryProfile({ ...memoryProfile, name: e.target.value })} placeholder="Name" className="rounded-lg border border-zinc-700/60 bg-zinc-900/70 px-3 py-2 text-xs text-zinc-100 outline-none" />
+              <input value={memoryProfile.role} onChange={(e) => setMemoryProfile({ ...memoryProfile, role: e.target.value })} placeholder="Goal/role, e.g. CSE student" className="rounded-lg border border-zinc-700/60 bg-zinc-900/70 px-3 py-2 text-xs text-zinc-100 outline-none" />
+              <input value={memoryProfile.subjects} onChange={(e) => setMemoryProfile({ ...memoryProfile, subjects: e.target.value })} placeholder="Subjects/topics" className="rounded-lg border border-zinc-700/60 bg-zinc-900/70 px-3 py-2 text-xs text-zinc-100 outline-none" />
+              <input value={memoryProfile.language} onChange={(e) => setMemoryProfile({ ...memoryProfile, language: e.target.value })} placeholder="Language, e.g. Hinglish" className="rounded-lg border border-zinc-700/60 bg-zinc-900/70 px-3 py-2 text-xs text-zinc-100 outline-none" />
+            </div>
+            <textarea value={memoryProfile.style} onChange={(e) => setMemoryProfile({ ...memoryProfile, style: e.target.value })} placeholder="How should Credon answer? e.g. direct, creative, exam-focused, with examples" rows={2} className="w-full rounded-lg border border-zinc-700/60 bg-zinc-900/70 px-3 py-2 text-xs text-zinc-100 outline-none resize-none" />
+            <textarea value={memoryProfile.notes} onChange={(e) => setMemoryProfile({ ...memoryProfile, notes: e.target.value })} placeholder="Extra preferences or things to remember" rows={2} className="w-full rounded-lg border border-zinc-700/60 bg-zinc-900/70 px-3 py-2 text-xs text-zinc-100 outline-none resize-none" />
+            <button type="button" onClick={clearMemoryProfile} className="rounded-lg border border-zinc-700/60 px-3 py-1.5 text-[11px] text-zinc-300 hover:border-red-500/40 hover:text-red-200 transition">Clear editable memory</button>
           </div>
 
           <div className={`rounded-xl border px-3 py-2 ${masterMode ? "border-cyan-500/35 bg-cyan-500/10" : "border-zinc-700/50 bg-zinc-900/40"}`}>
@@ -1968,6 +2005,19 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
     if (typeof window === "undefined") return "comfortable";
     return (localStorage.getItem("credon-font-scale") as "compact" | "comfortable" | "large" | null) ?? "comfortable";
   });
+  const [memoryProfile, setMemoryProfileState] = useState<EditableMemoryProfile>(() => {
+    if (typeof window === "undefined") return EMPTY_MEMORY_PROFILE;
+    try {
+      return { ...EMPTY_MEMORY_PROFILE, ...JSON.parse(localStorage.getItem("credon-memory-profile") || "{}") };
+    } catch {
+      return EMPTY_MEMORY_PROFILE;
+    }
+  });
+  const setMemoryProfile = (profile: EditableMemoryProfile) => {
+    setMemoryProfileState(profile);
+    if (typeof window !== "undefined") localStorage.setItem("credon-memory-profile", JSON.stringify(profile));
+  };
+  const clearMemoryProfile = () => setMemoryProfile(EMPTY_MEMORY_PROFILE);
   const [replyTo, setReplyTo] = useState<{ text: string; index: number } | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
@@ -2556,6 +2606,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
             product_mode: detectedMode,
             answer_style: answerStyle,
             layout_preference: "auto",
+            user_profile: memoryProfile,
           },
           language: "auto",
           model: selectedModel || undefined,
@@ -2824,6 +2875,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                   product_mode: detectedMode,
                   answer_style: answerStyle,
                   layout_preference: "auto",
+                  user_profile: memoryProfile,
                 },
                 language: "auto",
                 model: selectedModel || undefined,
@@ -3331,6 +3383,9 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         setAppearance={setAppearance}
         fontScale={fontScale}
         setFontScale={setFontScale}
+        memoryProfile={memoryProfile}
+        setMemoryProfile={setMemoryProfile}
+        clearMemoryProfile={clearMemoryProfile}
         isGuest={isGuest}
         onRequireLogin={(feature) => setLoginPrompt(feature)}
         onDownloadCurrentChat={downloadCurrentChatPdf}
