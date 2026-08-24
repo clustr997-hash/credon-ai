@@ -3529,7 +3529,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
           <span className="font-semibold tracking-tight text-sm sm:text-base bg-linear-to-r from-white to-zinc-300 bg-clip-text text-transparent">CREDON-AI</span>
           <button type="button" onClick={() => setSettingsOpen(true)}
             className="ml-auto flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 px-2 sm:px-3 py-1.5 rounded-lg border border-zinc-700/40 transition" title="Settings">
-            <span className="hidden sm:inline">Credon Alpha 1</span>
+            <span className="hidden sm:inline">Credon Auto</span>
             <span className="sm:hidden">Settings</span>
           </button>
         </header>
