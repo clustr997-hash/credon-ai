@@ -1,0 +1,17 @@
+/* Credon product system: calm, premium, task-first. */
+:root {
+  --credon-bg: #0b0b0d;
+  --credon-border: rgba(255,255,255,.085);
+  --credon-accent: #8b5cf6;
+  --credon-accent-2: #6366f1;
+}
+html, body { background: var(--credon-bg); }
+body { background: radial-gradient(900px 520px at 50% -22%, rgba(99,102,241,.09), transparent 65%), radial-gradient(700px 480px at 100% 100%, rgba(139,92,246,.045), transparent 68%), var(--credon-bg); }
+.neo-glass { background: linear-gradient(145deg, rgba(24,24,27,.94), rgba(12,12,14,.96)); border-color: var(--credon-border) !important; box-shadow: 0 20px 70px rgba(0,0,0,.32); }
+.suggestion-chip:hover { transform: translateY(-1px); box-shadow: 0 12px 30px rgba(0,0,0,.28); }
+.sidebar-item:hover { transform: none; }
+aside { background: rgba(11,11,13,.94) !important; border-color: rgba(255,255,255,.075) !important; }
+.prose, .message-bubble { text-wrap: pretty; }
+button, [role="button"] { transition: border-color .16s ease, background-color .16s ease, transform .16s ease; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .001ms !important; } }
+@media (max-width: 767px) { aside { width: min(88vw, 340px) !important; } }
