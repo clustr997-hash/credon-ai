@@ -490,7 +490,7 @@ function ChartBlock({ chart }: { chart: ParsedChart }) {
 
   return (
     <div className="mt-4 w-full rounded-xl border border-zinc-800/70 bg-zinc-950/50 p-4">
-      {chart.title && <p className="mb-2 text-sm text-cyan-300">{chart.title}</p>}
+      {chart.title && <p className="mb-2 text-sm text-violet-300">{chart.title}</p>}
       <ResponsiveContainer width="100%" height={240}>
         {type === "line" ? (
           <LineChart data={data} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
@@ -550,7 +550,7 @@ function CredonLogo({ size = 32, animate = false, className = "" }: { size?: num
         className={animate ? "animate-logo-pulse" : ""}
       />
       {animate && (
-        <div className="absolute inset-0 rounded-full bg-cyan-400/20 animate-ping animate-ping-slow" />
+        <div className="absolute inset-0 rounded-full bg-violet-400/20 animate-ping animate-ping-slow" />
       )}
     </div>
   );
@@ -562,7 +562,7 @@ function CredonLogo({ size = 32, animate = false, className = "" }: { size?: num
 function CredonLoadingLogo({ label = "Credon is thinking" }: { label?: string }) {
   return (
     <div
-      className="w-8 h-8 rounded-full bg-linear-to-br from-cyan-500 to-blue-600 flex items-center justify-center shrink-0 overflow-hidden shadow-md shadow-cyan-500/15"
+      className="w-8 h-8 rounded-full bg-linear-to-br from-violet-500 to-blue-600 flex items-center justify-center shrink-0 overflow-hidden shadow-md shadow-violet-500/15"
       aria-label={label}
       role="status"
     >
@@ -585,9 +585,9 @@ function ProgressDots({ stage }: { stage: ThinkingStage }) {
         <div className="flex items-center gap-3">
           {/* Animated dots that cycle 1→2→3→1 */}
           <div className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-[bounce_1s_infinite]" />
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-[bounce_1s_infinite_0.2s]" />
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-[bounce_1s_infinite_0.4s]" />
+            <span className="w-2 h-2 rounded-full bg-violet-400 animate-[bounce_1s_infinite]" />
+            <span className="w-2 h-2 rounded-full bg-violet-400 animate-[bounce_1s_infinite_0.2s]" />
+            <span className="w-2 h-2 rounded-full bg-violet-400 animate-[bounce_1s_infinite_0.4s]" />
           </div>
           <span className="text-sm text-zinc-300">
             {stage ? labels[stage] || "Thinking" : "Thinking"}
@@ -604,7 +604,7 @@ function ProgressDots({ stage }: { stage: ThinkingStage }) {
                 key={s}
                 className={`h-1 rounded-full transition-all duration-500 ${
                   idx <= current
-                    ? "w-8 bg-linear-to-r from-cyan-400 to-blue-500"
+                    ? "w-8 bg-linear-to-r from-violet-400 to-blue-500"
                     : "w-6 bg-zinc-700"
                 }`}
               />
@@ -753,7 +753,7 @@ function FlowTimeline({ message }: { message: Message }) {
             <div key={i} className="flex items-start gap-2 relative">
               <div className="flex flex-col items-center">
                 <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
-                  step.icon === "route" ? "bg-cyan-500" :
+                  step.icon === "route" ? "bg-violet-500" :
                   step.icon === "source" ? "bg-blue-500" :
                   step.icon === "eval" ? "bg-amber-500" :
                   step.icon === "think" ? "bg-purple-500" :
@@ -782,17 +782,17 @@ function AgentInsightCard({ message }: { message: Message }) {
   if (!plan && !chart && !tools?.length) return null;
 
   return (
-    <div className="mt-3 rounded-2xl border border-cyan-400/15 bg-cyan-500/5 p-3 text-xs text-zinc-300">
+    <div className="mt-3 rounded-2xl border border-violet-400/15 bg-violet-500/5 p-3 text-xs text-zinc-300">
       {plan && (
         <div>
           <div className="flex items-center justify-between gap-2">
-            <p className="font-semibold text-cyan-200">Credon Manager</p>
+            <p className="font-semibold text-violet-200">Credon Manager</p>
             {plan.intent && <span className="rounded-full bg-zinc-900/80 px-2 py-0.5 text-[10px] uppercase tracking-wide text-zinc-400">{plan.intent}</span>}
           </div>
           {plan.agents && plan.agents.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {plan.agents.map((agent) => (
-                <span key={agent} className="rounded-full border border-cyan-400/20 bg-zinc-950/50 px-2 py-1 text-[11px] text-zinc-200">{agent}</span>
+                <span key={agent} className="rounded-full border border-violet-400/20 bg-zinc-950/50 px-2 py-1 text-[11px] text-zinc-200">{agent}</span>
               ))}
             </div>
           )}
@@ -808,7 +808,7 @@ function AgentInsightCard({ message }: { message: Message }) {
           <div className="flex h-24 items-end gap-1.5 rounded-xl border border-zinc-800/80 bg-zinc-950/45 px-2 py-2">
             {chart.values.slice(0, 12).map((value, idx) => (
               <div key={`${chart.labels?.[idx] || idx}-${idx}`} className="flex flex-1 flex-col items-center gap-1">
-                <div className="w-full rounded-t bg-linear-to-t from-cyan-500 to-blue-400" style={{ height: `${Math.max(4, Math.min(100, value))}%` }} title={`${chart.labels?.[idx] || idx}: ${value}${chart.unit || ""}`} />
+                <div className="w-full rounded-t bg-linear-to-t from-violet-500 to-blue-400" style={{ height: `${Math.max(4, Math.min(100, value))}%` }} title={`${chart.labels?.[idx] || idx}: ${value}${chart.unit || ""}`} />
                 <span className="text-[9px] text-zinc-600">{chart.labels?.[idx] || idx + 1}</span>
               </div>
             ))}
@@ -831,7 +831,7 @@ function ImageGrid({ images }: { images: ImageResult[] }) {
         {images.map((img, i) => (
           <button
             key={i} type="button" onClick={() => setSelected(img)}
-            className="group relative aspect-square rounded-xl overflow-hidden border border-zinc-700/30 hover:border-cyan-500/40 transition"
+            className="group relative aspect-square rounded-xl overflow-hidden border border-zinc-700/30 hover:border-violet-500/40 transition"
           >
             <Image
               src={img.thumbnail || img.image_url}
@@ -843,7 +843,7 @@ function ImageGrid({ images }: { images: ImageResult[] }) {
             />
             <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/85 to-transparent p-2">
               <p className="text-[10px] text-white truncate">{img.title}</p>
-              <p className="text-[9px] text-cyan-100/80 truncate">{getDomain(img.source_url)}</p>
+              <p className="text-[9px] text-violet-100/80 truncate">{getDomain(img.source_url)}</p>
             </div>
           </button>
         ))}
@@ -869,8 +869,8 @@ function ImageGrid({ images }: { images: ImageResult[] }) {
               {selected.title && <p className="text-sm text-zinc-200">{selected.title}</p>}
               <p className="mt-1 text-xs text-zinc-500">Source: {getDomain(selected.source_url)}</p>
               <div className="mt-3 flex justify-center gap-2">
-                <a href={selected.source_url} target="_blank" rel="noreferrer" className="rounded-xl border border-zinc-700/70 px-3 py-2 text-xs text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200">Open source</a>
-                <a href={selected.image_url} target="_blank" rel="noreferrer" download className="rounded-xl bg-cyan-500 px-3 py-2 text-xs font-semibold text-black hover:bg-cyan-300">Save image</a>
+                <a href={selected.source_url} target="_blank" rel="noreferrer" className="rounded-xl border border-zinc-700/70 px-3 py-2 text-xs text-zinc-200 hover:border-violet-500/40 hover:text-violet-200">Open source</a>
+                <a href={selected.image_url} target="_blank" rel="noreferrer" download className="rounded-xl bg-violet-500 px-3 py-2 text-xs font-semibold text-black hover:bg-violet-300">Save image</a>
               </div>
             </div>
           </div>
@@ -897,7 +897,7 @@ function SourcesPanel({ sources }: { sources: Source[] }) {
           <p className="text-xs font-semibold text-zinc-200">Sources ({sources.length})</p>
           <p className="text-[11px] text-zinc-500">Collapsed for faster reading</p>
         </div>
-        <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/20 bg-cyan-500/10 px-2.5 py-1 text-[11px] text-cyan-200">
+        <span className="inline-flex items-center gap-1 rounded-full border border-violet-400/20 bg-violet-500/10 px-2.5 py-1 text-[11px] text-violet-200">
           {open ? "Hide" : "Expand"}
           <svg className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M19 9l-7 7-7-7" /></svg>
         </span>
@@ -905,11 +905,11 @@ function SourcesPanel({ sources }: { sources: Source[] }) {
       {open && (
         <div className="grid gap-2 border-t border-zinc-800/60 p-2">
           {visible.map((source, idx) => (
-            <a key={`${source.url}-${idx}`} href={source.url} target="_blank" rel="noreferrer" className="group rounded-xl border border-zinc-800/80 bg-zinc-900/55 p-3 transition hover:border-cyan-500/35 hover:bg-zinc-900/80">
+            <a key={`${source.url}-${idx}`} href={source.url} target="_blank" rel="noreferrer" className="group rounded-xl border border-zinc-800/80 bg-zinc-900/55 p-3 transition hover:border-violet-500/35 hover:bg-zinc-900/80">
               <div className="flex items-start gap-3">
                 <Image src={faviconUrl(source.url)} alt="" width={22} height={22} unoptimized className="mt-0.5 h-5.5 w-5.5 rounded" />
                 <div className="min-w-0 flex-1">
-                  <p className="line-clamp-2 text-sm font-medium text-zinc-100 group-hover:text-cyan-100">{source.title || getDomain(source.url)}</p>
+                  <p className="line-clamp-2 text-sm font-medium text-zinc-100 group-hover:text-violet-100">{source.title || getDomain(source.url)}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
                     <span>{getDomain(source.url)}</span>
                     <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-emerald-300">{sourceConfidenceLabel(source)}</span>
@@ -971,10 +971,10 @@ function TtsPanel({
     { label: "Hinglish", value: "en-IN" },
   ];
   return (
-    <div className="mt-3 rounded-2xl border border-cyan-400/20 bg-cyan-500/7 p-3 shadow-lg shadow-cyan-950/15">
+    <div className="mt-3 rounded-2xl border border-violet-400/20 bg-violet-500/7 p-3 shadow-lg shadow-violet-950/15">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div>
-          <p className="text-xs font-semibold text-cyan-100">Read aloud</p>
+          <p className="text-xs font-semibold text-violet-100">Read aloud</p>
           <p className="text-[10px] text-zinc-500">Voice follows selected language and remembers sound preference.</p>
         </div>
         <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-800/70 hover:text-zinc-200" title="Collapse read aloud">Collapse ▲</button>
@@ -984,7 +984,7 @@ function TtsPanel({
           {voiceOptions.map((option) => <option key={`${option.label}-${option.value}`} value={option.value}>{option.label}</option>)}
         </select>
         <button type="button" onClick={() => onMuted(!muted)} className={`min-h-10 rounded-xl border px-3 text-xs font-semibold ${muted ? "border-amber-500/40 bg-amber-500/10 text-amber-200" : "border-zinc-700/60 text-zinc-200"}`}>{muted ? "Sound OFF" : "Sound ON"}</button>
-        <button type="button" onClick={onPlay} disabled={muted} className="min-h-10 rounded-xl bg-cyan-500 px-3 text-xs font-semibold text-black disabled:opacity-40">Play</button>
+        <button type="button" onClick={onPlay} disabled={muted} className="min-h-10 rounded-xl bg-violet-500 px-3 text-xs font-semibold text-black disabled:opacity-40">Play</button>
         <button type="button" onClick={paused ? onResume : onPause} className="min-h-10 rounded-xl border border-zinc-700/60 px-3 text-xs text-zinc-200">{paused ? "Resume" : "Pause"}</button>
         <button type="button" onClick={onStop} className="min-h-10 rounded-xl border border-zinc-700/60 px-3 text-xs text-zinc-200">Stop</button>
         <select value={rate} onChange={(e) => onRate(Number(e.target.value))} className="ml-auto min-h-10 rounded-xl border border-zinc-700/60 bg-zinc-950/70 px-2 text-xs text-zinc-200" title="Speech speed">
@@ -992,13 +992,13 @@ function TtsPanel({
         </select>
       </div>
       <label className="mt-3 block text-[11px] text-zinc-500">Reading progress: {progress}%</label>
-      <input type="range" min={0} max={Math.max(sentences.length - 1, 0)} value={Math.min(activeSentence, Math.max(sentences.length - 1, 0))} onChange={(e) => onSeek(Number(e.target.value))} className="mt-1 w-full accent-cyan-400" aria-label="Seek read aloud sentence" />
+      <input type="range" min={0} max={Math.max(sentences.length - 1, 0)} value={Math.min(activeSentence, Math.max(sentences.length - 1, 0))} onChange={(e) => onSeek(Number(e.target.value))} className="mt-1 w-full accent-violet-400" aria-label="Seek read aloud sentence" />
       <div className="mt-2 max-h-28 overflow-y-auto space-y-1 text-xs leading-relaxed">
         {sentences.slice(Math.max(0, activeSentence - 1), activeSentence + 3).map((sentence, offset) => {
           const sentenceIndex = Math.max(0, activeSentence - 1) + offset;
           const isActive = sentenceIndex === activeSentence;
           return (
-            <button key={`${sentenceIndex}-${sentence.slice(0, 16)}`} type="button" onClick={() => onSeek(sentenceIndex)} className={`block w-full rounded-xl px-2 py-1.5 text-left transition ${isActive ? "bg-cyan-400/15 text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.22)]" : sentenceIndex < activeSentence ? "text-zinc-300" : "text-zinc-500"}`}>
+            <button key={`${sentenceIndex}-${sentence.slice(0, 16)}`} type="button" onClick={() => onSeek(sentenceIndex)} className={`block w-full rounded-xl px-2 py-1.5 text-left transition ${isActive ? "bg-violet-400/15 text-violet-100 shadow-[0_0_18px_rgba(34,211,238,0.22)]" : sentenceIndex < activeSentence ? "text-zinc-300" : "text-zinc-500"}`}>
               {sentence}
             </button>
           );
@@ -1065,7 +1065,7 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
       aria-label="Settings"
     >
       <div
-        className="modal-content neo-glass w-full max-w-lg rounded-2xl border border-cyan-400/15 shadow-2xl shadow-black/50 max-h-[92dvh] flex flex-col"
+        className="modal-content neo-glass w-full max-w-lg rounded-2xl border border-violet-400/15 shadow-2xl shadow-black/50 max-h-[92dvh] flex flex-col"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/50">
@@ -1078,12 +1078,12 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
           {/* Model Info — no selection, internal routing */}
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-2">AI Model</label>
-            <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/5 px-4 py-3">
+            <div className="rounded-xl border border-violet-500/30 bg-violet-500/5 px-4 py-3">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-linear-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0">C</div>
+                <div className="w-10 h-10 rounded-lg bg-linear-to-br from-violet-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0">C</div>
                 <div>
-                  <p className="text-sm font-semibold text-white">Credon Alpha 1</p>
-                  <p className="text-xs text-zinc-400">Multi-model AI with automatic routing &middot; Always picks the best model for your query</p>
+                  <p className="text-sm font-semibold text-white">Credon Auto</p>
+                  <p className="text-xs text-zinc-400">Automatic model routing · picks the best available path for each task</p>
                 </div>
               </div>
             </div>
@@ -1109,7 +1109,7 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
                 setWebSearch(!webSearch);
               }}
               title={isGuest ? "Sign in to use Web Search" : "Toggle web search"}
-              className={`w-11 h-6 rounded-full transition-colors relative ${webSearch ? "bg-cyan-500" : "bg-zinc-700"}`}>
+              className={`w-11 h-6 rounded-full transition-colors relative ${webSearch ? "bg-violet-500" : "bg-zinc-700"}`}>
               <span className={`block w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${webSearch ? "translate-x-5.5" : "translate-x-0.5"}`} />
             </button>
           </div>
@@ -1159,7 +1159,7 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
                 setCodeMode(!codeMode);
               }}
               title={isGuest ? "Sign in to use Code Mode" : "Toggle code mode"}
-              className={`w-11 h-6 rounded-full transition-colors relative ${codeMode ? "bg-cyan-500" : "bg-zinc-700"}`}
+              className={`w-11 h-6 rounded-full transition-colors relative ${codeMode ? "bg-violet-500" : "bg-zinc-700"}`}
             >
               <span className={`block w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${codeMode ? "translate-x-5.5" : "translate-x-0.5"}`} />
             </button>
@@ -1178,8 +1178,8 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
                 className="rounded-lg border border-zinc-700/60 bg-zinc-800/70 px-3 py-2 text-xs text-zinc-100 outline-none"
                 title="Theme"
               >
-                <option value="dark">Dark cyan</option>
-                <option value="midnight">Midnight blue</option>
+                <option value="dark">Graphite</option>
+                <option value="midnight">Obsidian</option>
                 <option value="contrast">High contrast</option>
               </select>
               <select
@@ -1195,7 +1195,7 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
             </div>
           </div>
 
-          <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3 space-y-3">
+          <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-3 space-y-3">
             <div>
               <p className="text-sm font-medium text-zinc-200">Editable Memory & Profile</p>
               <p className="text-xs text-zinc-500">Keep this simple: Credon uses it quietly to personalize answers without adding mode buttons to chat.</p>
@@ -1211,11 +1211,11 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
             <button type="button" onClick={clearMemoryProfile} className="rounded-lg border border-zinc-700/60 px-3 py-1.5 text-[11px] text-zinc-300 hover:border-red-500/40 hover:text-red-200 transition">Clear editable memory</button>
           </div>
 
-          <div className={`rounded-xl border px-3 py-2 ${masterMode ? "border-cyan-500/35 bg-cyan-500/10" : "border-zinc-700/50 bg-zinc-900/40"}`}>
+          <div className={`rounded-xl border px-3 py-2 ${masterMode ? "border-violet-500/35 bg-violet-500/10" : "border-zinc-700/50 bg-zinc-900/40"}`}>
             <div className="flex items-center gap-2">
               <p className="text-sm font-medium text-zinc-200">Master Mode</p>
               {masterMode && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-linear-to-r from-cyan-500 to-purple-500 px-2.5 py-0.5 text-[10px] font-semibold text-white shadow-sm shadow-cyan-500/30">Master Mode Unlocked ⚡</span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-linear-to-r from-violet-500 to-purple-500 px-2.5 py-0.5 text-[10px] font-semibold text-white shadow-sm shadow-violet-500/30">Master Mode Unlocked ⚡</span>
               )}
             </div>
             <p className="text-xs text-zinc-500 mt-0.5">
@@ -1241,7 +1241,7 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
               <button
                 type="button"
                 onClick={onEnableNotifications}
-                className="rounded-lg border border-zinc-700/60 bg-zinc-800/70 px-3 py-1.5 text-xs text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200 transition"
+                className="rounded-lg border border-zinc-700/60 bg-zinc-800/70 px-3 py-1.5 text-xs text-zinc-200 hover:border-violet-500/40 hover:text-violet-200 transition"
               >
                 Enable
               </button>
@@ -1255,14 +1255,14 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
                 <button
                   type="button"
                   onClick={() => setDownloadTarget("current")}
-                  className={`rounded-lg px-3 py-2 text-xs transition border ${downloadTarget === "current" ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-200" : "border-zinc-700/60 bg-zinc-800/60 text-zinc-300 hover:border-zinc-600"}`}
+                  className={`rounded-lg px-3 py-2 text-xs transition border ${downloadTarget === "current" ? "border-violet-500/40 bg-violet-500/10 text-violet-200" : "border-zinc-700/60 bg-zinc-800/60 text-zinc-300 hover:border-zinc-600"}`}
                 >
                   Current Chat
                 </button>
                 <button
                   type="button"
                   onClick={() => setDownloadTarget("all")}
-                  className={`rounded-lg px-3 py-2 text-xs transition border ${downloadTarget === "all" ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-200" : "border-zinc-700/60 bg-zinc-800/60 text-zinc-300 hover:border-zinc-600"}`}
+                  className={`rounded-lg px-3 py-2 text-xs transition border ${downloadTarget === "all" ? "border-violet-500/40 bg-violet-500/10 text-violet-200" : "border-zinc-700/60 bg-zinc-800/60 text-zinc-300 hover:border-zinc-600"}`}
                 >
                   All Chats
                 </button>
@@ -1275,7 +1275,7 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
                     void (downloadTarget === "current" ? onPreviewCurrentChat() : onPreviewAllChats());
                     onClose();
                   }}
-                  className="rounded-lg border border-zinc-700/60 bg-zinc-800/70 px-3 py-2 text-xs text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200 transition"
+                  className="rounded-lg border border-zinc-700/60 bg-zinc-800/70 px-3 py-2 text-xs text-zinc-200 hover:border-violet-500/40 hover:text-violet-200 transition"
                 >
                   View PDF
                 </button>
@@ -1285,7 +1285,7 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
                     void (downloadTarget === "current" ? onDownloadCurrentChat() : onDownloadAllChats());
                     onClose();
                   }}
-                  className="rounded-lg border border-zinc-700/60 bg-zinc-800/70 px-3 py-2 text-xs text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200 transition"
+                  className="rounded-lg border border-zinc-700/60 bg-zinc-800/70 px-3 py-2 text-xs text-zinc-200 hover:border-violet-500/40 hover:text-violet-200 transition"
                 >
                   Download PDF
                 </button>
@@ -1298,7 +1298,7 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
                   void onDownloadCurrentChat();
                   onClose();
                 }}
-                className="rounded-xl border border-zinc-700/50 bg-zinc-800/50 px-3 py-2 text-left text-xs text-zinc-200 hover:border-cyan-500/40 hover:bg-zinc-800/80 transition"
+                className="rounded-xl border border-zinc-700/50 bg-zinc-800/50 px-3 py-2 text-left text-xs text-zinc-200 hover:border-violet-500/40 hover:bg-zinc-800/80 transition"
               >
                 Quick Download: Current Chat
               </button>
@@ -1308,7 +1308,7 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
                   void onDownloadAllChats();
                   onClose();
                 }}
-                className="rounded-xl border border-zinc-700/50 bg-zinc-800/50 px-3 py-2 text-left text-xs text-zinc-200 hover:border-cyan-500/40 hover:bg-zinc-800/80 transition"
+                className="rounded-xl border border-zinc-700/50 bg-zinc-800/50 px-3 py-2 text-left text-xs text-zinc-200 hover:border-violet-500/40 hover:bg-zinc-800/80 transition"
               >
                 Quick Download: All Chats
               </button>
@@ -1327,7 +1327,7 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
                           onPreviewSessionPdf(session.session_id);
                           onClose();
                         }}
-                        className="rounded-md border border-zinc-700/60 bg-zinc-800/70 px-2 py-1 text-[11px] text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200 transition"
+                        className="rounded-md border border-zinc-700/60 bg-zinc-800/70 px-2 py-1 text-[11px] text-zinc-200 hover:border-violet-500/40 hover:text-violet-200 transition"
                       >
                         View
                       </button>
@@ -1337,7 +1337,7 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
                           onDownloadSessionPdf(session.session_id);
                           onClose();
                         }}
-                        className="rounded-md border border-zinc-700/60 bg-zinc-800/70 px-2 py-1 text-[11px] text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200 transition"
+                        className="rounded-md border border-zinc-700/60 bg-zinc-800/70 px-2 py-1 text-[11px] text-zinc-200 hover:border-violet-500/40 hover:text-violet-200 transition"
                       >
                         Download
                       </button>
@@ -1352,7 +1352,7 @@ function SettingsModal({ open, onClose, webSearch, setWebSearch, deepThink, setD
           </div>
         </div>
         <div className="px-6 py-4 border-t border-zinc-800/50 flex justify-end">
-          <button type="button" onClick={onClose} className="px-5 py-2.5 text-sm font-medium rounded-xl bg-linear-to-r from-cyan-500 to-blue-600 text-white hover:brightness-110 transition shadow-md shadow-cyan-500/15">Done</button>
+          <button type="button" onClick={onClose} className="px-5 py-2.5 text-sm font-medium rounded-xl bg-linear-to-r from-violet-500 to-blue-600 text-white hover:brightness-110 transition shadow-md shadow-violet-500/15">Done</button>
         </div>
       </div>
     </div>
@@ -1402,12 +1402,12 @@ function UpdatesModal({ open, onClose }: { open: boolean; onClose: () => void })
           </button>
         </div>
         <div className="px-6 py-5 overflow-y-auto space-y-3 text-sm">
-          <div className="rounded-xl border border-cyan-500/25 bg-cyan-500/10 p-3">
+          <div className="rounded-xl border border-violet-500/25 bg-violet-500/10 p-3">
             <div className="flex items-center gap-2">
-              <p className="text-cyan-200 font-medium">Version 1.2.0</p>
+              <p className="text-violet-200 font-medium">Version 1.2.0</p>
               <span className="rounded-full bg-zinc-900/70 px-2 py-0.5 text-[10px] text-zinc-400">June 2026</span>
             </div>
-            <p className="text-xs text-zinc-300 mt-1">Charts, Streaming &amp; Personalization — Credon Alpha 1.</p>
+            <p className="text-xs text-zinc-300 mt-1">Charts, Streaming &amp; Personalization — Credon Auto.</p>
           </div>
           <div className="rounded-xl border border-zinc-700/50 bg-zinc-900/50 p-3">
             <p className="text-white font-medium">What is new</p>
@@ -1460,7 +1460,7 @@ function DislikeFeedbackModal({
               value={category}
               onChange={(e) => setCategory(e.target.value as FeedbackCategory)}
               title="Feedback category"
-              className="w-full rounded-xl border border-zinc-700/60 bg-zinc-800/70 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/50"
+              className="w-full rounded-xl border border-zinc-700/60 bg-zinc-800/70 px-3 py-2 text-sm text-white outline-none focus:border-violet-500/50"
             >
               <option value="irrelevant">Irrelevant to my question</option>
               <option value="incorrect">Factually incorrect</option>
@@ -1476,7 +1476,7 @@ function DislikeFeedbackModal({
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="Tell us what should be better"
-              className="w-full rounded-xl border border-zinc-700/60 bg-zinc-800/70 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/50 resize-none"
+              className="w-full rounded-xl border border-zinc-700/60 bg-zinc-800/70 px-3 py-2 text-sm text-white outline-none focus:border-violet-500/50 resize-none"
             />
           </div>
         </div>
@@ -1486,7 +1486,7 @@ function DislikeFeedbackModal({
             type="button"
             disabled={busy}
             onClick={() => onSubmit(category, reason.trim())}
-            className="px-4 py-2 rounded-xl text-sm bg-linear-to-r from-cyan-500 to-blue-600 text-white disabled:opacity-50"
+            className="px-4 py-2 rounded-xl text-sm bg-linear-to-r from-violet-500 to-blue-600 text-white disabled:opacity-50"
           >
             {busy ? "Sending..." : "Submit feedback"}
           </button>
@@ -1602,11 +1602,11 @@ function KnowledgeUploadModal({ open, onClose, uid }: { open: boolean; onClose: 
           {/* Tabs */}
           <div className="flex gap-2">
             <button type="button" onClick={() => setTab("text")}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition ${tab === "text" ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/40" : "bg-zinc-800/60 text-zinc-400 border border-zinc-700/40 hover:text-zinc-300"}`}>
+              className={`px-4 py-2 rounded-xl text-sm font-medium transition ${tab === "text" ? "bg-violet-500/20 text-violet-400 border border-violet-500/40" : "bg-zinc-800/60 text-zinc-400 border border-zinc-700/40 hover:text-zinc-300"}`}>
               Paste Text
             </button>
             <button type="button" onClick={() => setTab("pdf")}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition ${tab === "pdf" ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/40" : "bg-zinc-800/60 text-zinc-400 border border-zinc-700/40 hover:text-zinc-300"}`}>
+              className={`px-4 py-2 rounded-xl text-sm font-medium transition ${tab === "pdf" ? "bg-violet-500/20 text-violet-400 border border-violet-500/40" : "bg-zinc-800/60 text-zinc-400 border border-zinc-700/40 hover:text-zinc-300"}`}>
               Upload PDF
             </button>
           </div>
@@ -1615,7 +1615,7 @@ function KnowledgeUploadModal({ open, onClose, uid }: { open: boolean; onClose: 
           <div>
             <label className="block text-xs font-medium text-zinc-400 mb-1">Title</label>
             <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Physics Ch-5 Notes"
-              className="w-full px-3 py-2 rounded-xl bg-zinc-800/60 border border-zinc-700/40 text-sm text-white placeholder:text-zinc-500 outline-none focus:border-cyan-500/50" />
+              className="w-full px-3 py-2 rounded-xl bg-zinc-800/60 border border-zinc-700/40 text-sm text-white placeholder:text-zinc-500 outline-none focus:border-violet-500/50" />
           </div>
 
           {/* Subject + Source Type row */}
@@ -1623,14 +1623,14 @@ function KnowledgeUploadModal({ open, onClose, uid }: { open: boolean; onClose: 
             <div className="flex-1">
               <label className="block text-xs font-medium text-zinc-400 mb-1">Subject</label>
               <select value={subject} onChange={e => setSubject(e.target.value)} title="Subject"
-                className="w-full px-3 py-2 rounded-xl bg-zinc-800/60 border border-zinc-700/40 text-sm text-white outline-none focus:border-cyan-500/50">
+                className="w-full px-3 py-2 rounded-xl bg-zinc-800/60 border border-zinc-700/40 text-sm text-white outline-none focus:border-violet-500/50">
                 {SUBJECTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>
             </div>
             <div className="flex-1">
               <label className="block text-xs font-medium text-zinc-400 mb-1">Type</label>
               <select value={sourceType} onChange={e => setSourceType(e.target.value)} title="Source type"
-                className="w-full px-3 py-2 rounded-xl bg-zinc-800/60 border border-zinc-700/40 text-sm text-white outline-none focus:border-cyan-500/50">
+                className="w-full px-3 py-2 rounded-xl bg-zinc-800/60 border border-zinc-700/40 text-sm text-white outline-none focus:border-violet-500/50">
                 {SOURCE_TYPES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>
             </div>
@@ -1640,7 +1640,7 @@ function KnowledgeUploadModal({ open, onClose, uid }: { open: boolean; onClose: 
           <div>
             <label className="block text-xs font-medium text-zinc-400 mb-1">Tags (comma-separated)</label>
             <input value={tags} onChange={e => setTags(e.target.value)} placeholder="e.g. chapter-5, thermodynamics, exam-prep"
-              className="w-full px-3 py-2 rounded-xl bg-zinc-800/60 border border-zinc-700/40 text-sm text-white placeholder:text-zinc-500 outline-none focus:border-cyan-500/50" />
+              className="w-full px-3 py-2 rounded-xl bg-zinc-800/60 border border-zinc-700/40 text-sm text-white placeholder:text-zinc-500 outline-none focus:border-violet-500/50" />
           </div>
 
           {/* Text input or PDF upload */}
@@ -1649,7 +1649,7 @@ function KnowledgeUploadModal({ open, onClose, uid }: { open: boolean; onClose: 
               <label className="block text-xs font-medium text-zinc-400 mb-1">Content</label>
               <textarea value={text} onChange={e => setText(e.target.value)} rows={6}
                 placeholder="Paste your notes, question paper, cheat sheet, or lecture content here..."
-                className="w-full px-3 py-2 rounded-xl bg-zinc-800/60 border border-zinc-700/40 text-sm text-white placeholder:text-zinc-500 outline-none focus:border-cyan-500/50 resize-none" />
+                className="w-full px-3 py-2 rounded-xl bg-zinc-800/60 border border-zinc-700/40 text-sm text-white placeholder:text-zinc-500 outline-none focus:border-violet-500/50 resize-none" />
             </div>
           ) : (
             <div>
@@ -1659,7 +1659,7 @@ function KnowledgeUploadModal({ open, onClose, uid }: { open: boolean; onClose: 
               <button type="button" onClick={() => pdfRef.current?.click()}
                 className="w-full px-4 py-6 rounded-xl border-2 border-dashed border-zinc-700/60 bg-zinc-800/30 hover:bg-zinc-800/50 transition text-sm text-zinc-400 hover:text-zinc-300">
                 {pdfFile ? (
-                  <span className="text-cyan-400">{pdfFile.name} ({(pdfFile.size / 1024).toFixed(0)} KB)</span>
+                  <span className="text-violet-400">{pdfFile.name} ({(pdfFile.size / 1024).toFixed(0)} KB)</span>
                 ) : (
                   <>Click to select a PDF file</>
                 )}
@@ -1678,7 +1678,7 @@ function KnowledgeUploadModal({ open, onClose, uid }: { open: boolean; onClose: 
         <div className="px-6 py-4 border-t border-zinc-800 shrink-0 flex items-center justify-between">
           <p className="text-[11px] text-zinc-500">Subject is auto-detected if not selected</p>
           <button type="button" disabled={busy || (tab === "text" ? !text.trim() : !pdfFile)} onClick={tab === "text" ? submitText : submitPdf}
-            className="px-5 py-2 text-sm rounded-xl bg-linear-to-r from-cyan-500 to-blue-600 text-white hover:brightness-110 transition disabled:opacity-40">
+            className="px-5 py-2 text-sm rounded-xl bg-linear-to-r from-violet-500 to-blue-600 text-white hover:brightness-110 transition disabled:opacity-40">
             {busy ? "Uploading..." : "Upload"}
           </button>
         </div>
@@ -1732,7 +1732,7 @@ function AuthPage({ onGuest }: { onGuest: () => void }) {
     <div className="min-h-dvh flex items-center justify-center bg-[#09090b] px-4">
       <div className="w-full max-w-105">
         <div className="text-center mb-8">
-          <div className="mx-auto w-16 h-16 rounded-2xl bg-linear-to-br from-cyan-500 to-blue-600 flex items-center justify-center mb-4 shadow-lg shadow-cyan-500/20 overflow-hidden">
+          <div className="mx-auto w-16 h-16 rounded-2xl bg-linear-to-br from-violet-500 to-blue-600 flex items-center justify-center mb-4 shadow-lg shadow-violet-500/20 overflow-hidden">
             <CredonLogo size={40} />
           </div>
           <h1 className="text-3xl font-bold text-white tracking-tight">Credon AI</h1>
@@ -1761,14 +1761,14 @@ function AuthPage({ onGuest }: { onGuest: () => void }) {
             <div>
               <label className="block text-sm text-zinc-400 mb-1.5">Email address</label>
               <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"
-                className="w-full rounded-xl border border-zinc-700 bg-zinc-800/50 px-4 py-3 text-white placeholder:text-zinc-500 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/20 transition" />
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-800/50 px-4 py-3 text-white placeholder:text-zinc-500 outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500/20 transition" />
             </div>
             {tab !== "forgot" && (
               <div>
                 <label className="block text-sm text-zinc-400 mb-1.5">Password</label>
                 <div className="relative">
                   <input type={showPw ? "text" : "password"} required minLength={6} value={pw} onChange={(e) => setPw(e.target.value)} placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;"
-                    className="w-full rounded-xl border border-zinc-700 bg-zinc-800/50 px-4 py-3 pr-11 text-white placeholder:text-zinc-500 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/20 transition" />
+                    className="w-full rounded-xl border border-zinc-700 bg-zinc-800/50 px-4 py-3 pr-11 text-white placeholder:text-zinc-500 outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500/20 transition" />
                   <button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition" tabIndex={-1} title={showPw ? "Hide password" : "Show password"} aria-label={showPw ? "Hide password" : "Show password"}>
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                       {showPw ? <path d="M3.98 8.223A10.477 10.477 0 001.934 12c1.292 4.338 5.31 7.5 10.066 7.5.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
@@ -1778,10 +1778,10 @@ function AuthPage({ onGuest }: { onGuest: () => void }) {
                 </div>
               </div>
             )}
-            {tab === "signin" && <button type="button" onClick={() => switchTab("forgot")} className="text-sm text-cyan-400 hover:text-cyan-300 transition">Forgot password?</button>}
+            {tab === "signin" && <button type="button" onClick={() => switchTab("forgot")} className="text-sm text-violet-400 hover:text-violet-300 transition">Forgot password?</button>}
             {err && <p className="text-sm text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">{err}</p>}
             {ok && <p className="text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">{ok}</p>}
-            <button type="submit" disabled={busy} className="w-full py-3 rounded-xl bg-linear-to-r from-cyan-500 to-blue-600 text-white font-semibold hover:brightness-110 disabled:opacity-50 transition shadow-lg shadow-cyan-500/20">
+            <button type="submit" disabled={busy} className="w-full py-3 rounded-xl bg-linear-to-r from-violet-500 to-blue-600 text-white font-semibold hover:brightness-110 disabled:opacity-50 transition shadow-lg shadow-violet-500/20">
               {busy ? "Please wait\u2026" : tab === "signin" ? "Sign In" : tab === "signup" ? "Create Account" : "Send Reset Link"}
             </button>
           </form>
@@ -1809,14 +1809,14 @@ function LandingPage({ onStart, onTryFree }: { onStart: () => void; onTryFree: (
   return (
     <div className="min-h-dvh bg-[#07080a] text-white overflow-hidden">
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute -top-24 left-1/2 -translate-x-1/2 h-72 w-72 rounded-full bg-cyan-500/20 blur-3xl" />
+        <div className="absolute -top-24 left-1/2 -translate-x-1/2 h-72 w-72 rounded-full bg-violet-500/20 blur-3xl" />
         <div className="absolute top-1/3 -left-16 h-56 w-56 rounded-full bg-blue-500/20 blur-3xl" />
-        <div className="absolute bottom-0 right-0 h-64 w-64 rounded-full bg-cyan-400/10 blur-3xl" />
+        <div className="absolute bottom-0 right-0 h-64 w-64 rounded-full bg-violet-400/10 blur-3xl" />
       </div>
       <div className="relative z-10 mx-auto max-w-6xl px-5 py-8 md:py-12">
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/10 border border-cyan-400/30 backdrop-blur-xl flex items-center justify-center overflow-hidden shadow-[0_8px_28px_rgba(34,211,238,0.18)]">
+            <div className="w-10 h-10 rounded-xl bg-white/10 border border-violet-400/30 backdrop-blur-xl flex items-center justify-center overflow-hidden shadow-[0_8px_28px_rgba(34,211,238,0.18)]">
               <CredonLogo size={28} />
             </div>
             <span className="text-sm md:text-base font-semibold tracking-[0.12em]">CREDON-AI</span>
@@ -1832,10 +1832,10 @@ function LandingPage({ onStart, onTryFree }: { onStart: () => void; onTryFree: (
 
         <section className="grid md:grid-cols-2 gap-7 md:gap-10 mt-10 md:mt-16 items-center">
           <div>
-            <p className="text-cyan-300/90 text-xs tracking-[0.14em] uppercase">Research. Build. Learn faster.</p>
+            <p className="text-violet-300/90 text-xs tracking-[0.14em] uppercase">Research. Build. Learn faster.</p>
             <h1 className="mt-3 text-4xl md:text-6xl font-black leading-tight tracking-tight">
               Modern AI Workspace for
-              <span className="block text-transparent bg-clip-text bg-linear-to-r from-cyan-200 via-cyan-400 to-blue-400">Students & Builders</span>
+              <span className="block text-transparent bg-clip-text bg-linear-to-r from-violet-200 via-violet-400 to-blue-400">Students & Builders</span>
             </h1>
             <p className="mt-4 text-zinc-300 text-sm md:text-base max-w-xl">
               Ask better questions, upload notes/PDFs, generate polished answers and exports,
@@ -1845,14 +1845,14 @@ function LandingPage({ onStart, onTryFree }: { onStart: () => void; onTryFree: (
               <button
                 type="button"
                 onClick={onStart}
-                className="rounded-2xl bg-linear-to-r from-cyan-500 to-blue-600 px-6 py-3 text-sm font-semibold shadow-[0_10px_30px_rgba(6,182,212,0.28)] hover:brightness-110 transition"
+                className="rounded-2xl bg-linear-to-r from-violet-500 to-blue-600 px-6 py-3 text-sm font-semibold shadow-[0_10px_30px_rgba(6,182,212,0.28)] hover:brightness-110 transition"
               >
                 Get Started
               </button>
               <button
                 type="button"
                 onClick={onTryFree}
-                className="rounded-2xl bg-zinc-900/70 border border-zinc-700/60 px-6 py-3 text-sm font-semibold hover:border-cyan-500/40 hover:bg-zinc-800/80 transition"
+                className="rounded-2xl bg-zinc-900/70 border border-zinc-700/60 px-6 py-3 text-sm font-semibold hover:border-violet-500/40 hover:bg-zinc-800/80 transition"
               >
                 Try Free (Guest)
               </button>
@@ -1876,21 +1876,21 @@ function LandingPage({ onStart, onTryFree }: { onStart: () => void; onTryFree: (
 
         <section className="mt-10 md:mt-14 grid gap-4 md:grid-cols-3">
           <article className="rounded-2xl border border-zinc-700/50 bg-zinc-900/55 p-4">
-            <h3 className="text-sm font-semibold text-cyan-200">Why CSE Students Prefer It</h3>
+            <h3 className="text-sm font-semibold text-violet-200">Why CSE Students Prefer It</h3>
             <p className="mt-2 text-xs text-zinc-300 leading-relaxed">
               Code Mode pushes structured, runnable answers with practical steps. It is tuned for DSA,
               debugging, DBMS, OS, and project workflows instead of generic textbook summaries.
             </p>
           </article>
           <article className="rounded-2xl border border-zinc-700/50 bg-zinc-900/55 p-4">
-            <h3 className="text-sm font-semibold text-cyan-200">Smarter Than One-Model Chat</h3>
+            <h3 className="text-sm font-semibold text-violet-200">Smarter Than One-Model Chat</h3>
             <p className="mt-2 text-xs text-zinc-300 leading-relaxed">
               CREDON-AI routes each query through the best internal path: instant response, context follow-up,
               grounded retrieval, or deep analysis. That means better speed on simple asks and better depth when needed.
             </p>
           </article>
           <article className="rounded-2xl border border-zinc-700/50 bg-zinc-900/55 p-4">
-            <h3 className="text-sm font-semibold text-cyan-200">Built for Real Assignments</h3>
+            <h3 className="text-sm font-semibold text-violet-200">Built for Real Assignments</h3>
             <p className="mt-2 text-xs text-zinc-300 leading-relaxed">
               Upload class notes, PDFs, and visuals, then export polished responses as PDFs. Keep your sessions organized
               so revision and report generation are faster before exams and project deadlines.
@@ -1926,14 +1926,14 @@ function LandingPage({ onStart, onTryFree }: { onStart: () => void; onTryFree: (
 function InstallPromptBanner({ active, onInstall, onDismiss }: { active: boolean; onInstall: () => void; onDismiss: () => void }) {
   if (!active) return null;
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[min(92vw,640px)] rounded-2xl border border-cyan-500/30 bg-zinc-950/85 backdrop-blur-xl px-4 py-3 flex items-center gap-3 shadow-2xl">
-      <div className="w-8 h-8 rounded-lg bg-cyan-500/15 border border-cyan-400/30 flex items-center justify-center shrink-0 overflow-hidden"><CredonLogo size={22} /></div>
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[min(92vw,640px)] rounded-2xl border border-violet-500/30 bg-zinc-950/85 backdrop-blur-xl px-4 py-3 flex items-center gap-3 shadow-2xl">
+      <div className="w-8 h-8 rounded-lg bg-violet-500/15 border border-violet-400/30 flex items-center justify-center shrink-0 overflow-hidden"><CredonLogo size={22} /></div>
       <div className="min-w-0 flex-1">
         <p className="text-sm text-zinc-100 font-medium">Install CREDON-AI on your home screen</p>
         <p className="text-xs text-zinc-400">Faster launch and app-like experience. We’ll remind rarely.</p>
       </div>
       <button type="button" onClick={onDismiss} className="text-xs text-zinc-500 hover:text-zinc-300">Later</button>
-      <button type="button" onClick={onInstall} className="rounded-xl bg-linear-to-r from-cyan-500 to-blue-600 px-3 py-1.5 text-xs font-semibold">Install</button>
+      <button type="button" onClick={onInstall} className="rounded-xl bg-linear-to-r from-violet-500 to-blue-600 px-3 py-1.5 text-xs font-semibold">Install</button>
     </div>
   );
 }
@@ -3434,11 +3434,11 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} aria-label="Take a photo" />
 
       {/* ─── Sidebar (DeepSeek-style) ─── */}
-      <aside className={`fixed md:static inset-y-0 left-0 z-40 w-70 bg-zinc-950/75 backdrop-blur-2xl border-r border-cyan-400/10 flex flex-col transition-transform duration-200 ease-out md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+      <aside className={`fixed inset-y-0 left-0 z-40 w-72 bg-zinc-950/90 backdrop-blur-2xl border-r border-zinc-800/80 flex flex-col transition-transform duration-200 ease-out ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         {/* Sidebar header — clean, just new chat */}
         <div className="h-14 flex items-center justify-between px-3 shrink-0 border-b border-zinc-800/40">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-linear-to-br from-cyan-500 to-blue-600 flex items-center justify-center overflow-hidden">
+            <div className="w-7 h-7 rounded-lg bg-linear-to-br from-violet-500 to-blue-600 flex items-center justify-center overflow-hidden">
               <CredonLogo size={22} />
             </div>
             <span className="text-sm font-semibold text-white tracking-tight">CREDON-AI</span>
@@ -3455,7 +3455,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
           </div>
         </div>
         <div className="px-3 pt-3 space-y-2">
-          <input value={chatSearch} onChange={(e) => setChatSearch(e.target.value)} placeholder="Search chats" className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-3 py-2 text-xs text-zinc-200 outline-none focus:border-cyan-500/40" />
+          <input value={chatSearch} onChange={(e) => setChatSearch(e.target.value)} placeholder="Search chats" className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-3 py-2 text-xs text-zinc-200 outline-none focus:border-violet-500/40" />
           <div className="grid grid-cols-2 gap-1.5 text-[10px] text-zinc-400">
             {["Personal", "Study", "Coding", "Startup", "Research"].map((folder) => <span key={folder} className="rounded-lg border border-zinc-800/70 bg-zinc-900/45 px-2 py-1">{folder}</span>)}
           </div>
@@ -3466,14 +3466,14 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               <p className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider px-2 mb-1.5">{label}</p>
               <div className="space-y-0.5">
                 {items.map((s) => (
-                  <div key={s.session_id} className={`sidebar-item group rounded-xl border transition ${currentSession === s.session_id ? "bg-cyan-500/10 text-white border-cyan-500/20" : "text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200 border-transparent"}`}>
+                  <div key={s.session_id} className={`sidebar-item group rounded-xl border transition ${currentSession === s.session_id ? "bg-violet-500/10 text-white border-violet-500/20" : "text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200 border-transparent"}`}>
                     <button type="button" onClick={() => { stopGeneration(); setCurrentSession(s.session_id); setSidebarOpen(false); }} className="w-full text-left px-3 pt-2.5 pb-1.5 text-sm truncate flex items-center gap-2">
                       <svg className="w-4 h-4 shrink-0 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" /></svg>
                       <span className="truncate">{s.preview || "New conversation"}</span>
                     </button>
                     <div className="flex gap-1 px-3 pb-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition">
-                      <button type="button" onClick={() => setPinnedSessions((prev) => prev.includes(s.session_id) ? prev.filter((id) => id !== s.session_id) : [...prev, s.session_id])} className="text-[10px] text-zinc-500 hover:text-cyan-300">{pinnedSessions.includes(s.session_id) ? "Unpin" : "Pin"}</button>
-                      <button type="button" onClick={() => { void renameChat(s.session_id, s.preview); }} className="text-[10px] text-zinc-500 hover:text-cyan-300">Rename</button>
+                      <button type="button" onClick={() => setPinnedSessions((prev) => prev.includes(s.session_id) ? prev.filter((id) => id !== s.session_id) : [...prev, s.session_id])} className="text-[10px] text-zinc-500 hover:text-violet-300">{pinnedSessions.includes(s.session_id) ? "Unpin" : "Pin"}</button>
+                      <button type="button" onClick={() => { void renameChat(s.session_id, s.preview); }} className="text-[10px] text-zinc-500 hover:text-violet-300">Rename</button>
                       <span className="text-[10px] text-zinc-700">•</span>
                       <button type="button" onClick={() => { void deleteChat(s.session_id); }} className="text-[10px] text-zinc-500 hover:text-rose-300">Delete</button>
                     </div>
@@ -3502,7 +3502,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
           </div>
           <div className="p-3">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-linear-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-xs font-bold shrink-0 shadow-lg shadow-cyan-500/10">{displayName[0]?.toUpperCase() ?? "G"}</div>
+              <div className="w-9 h-9 rounded-full bg-linear-to-br from-violet-500 to-blue-600 flex items-center justify-center text-xs font-bold shrink-0 shadow-lg shadow-violet-500/10">{displayName[0]?.toUpperCase() ?? "G"}</div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-white font-medium truncate">{displayName}</p>
                 <p className="text-[11px] text-zinc-500">{isGuest ? "Guest mode" : "Signed in"}</p>
@@ -3516,11 +3516,11 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
       </aside>
 
       {/* ─── Main ─── */}
-      <main className="flex-1 flex flex-col min-w-0">
+      <main className={`flex-1 flex flex-col min-w-0 transition-[margin] duration-200 ${sidebarOpen ? "md:ml-72" : ""}`}>
         {/* Header */}
-        <header className="h-14 border-b border-cyan-400/10 flex items-center px-3 sm:px-4 gap-2 sm:gap-3 shrink-0 bg-zinc-950/55 backdrop-blur-2xl">
+        <header className="h-14 border-b border-violet-400/10 flex items-center px-3 sm:px-4 gap-2 sm:gap-3 shrink-0 bg-zinc-950/55 backdrop-blur-2xl">
           {/* Sidebar toggle — panel icon */}
-          <button type="button" onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition" title="Toggle sidebar">
+          <button type="button" onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition" title={sidebarOpen ? "Collapse sidebar" : "Open sidebar"} aria-label={sidebarOpen ? "Collapse sidebar" : "Open sidebar">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <rect x="3" y="3" width="18" height="18" rx="2" />
               <path d="M9 3v18" />
@@ -3538,18 +3538,18 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
         <div ref={transcriptRef} onScroll={updateAutoScrollIntent} className="flex-1 overflow-y-auto">
           {isEmptyChat ? (
             <div className="h-full flex flex-col items-center justify-center px-4 sm:px-6 -mt-10">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-linear-to-br from-cyan-500 to-blue-600 flex items-center justify-center mb-5 sm:mb-6 shadow-xl shadow-cyan-500/20 overflow-hidden">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-linear-to-br from-violet-500 to-blue-600 flex items-center justify-center mb-5 sm:mb-6 shadow-xl shadow-violet-500/20 overflow-hidden">
                 <CredonLogo size={40} />
               </div>
-              <h2 className="welcome-title text-3xl sm:text-4xl md:text-5xl font-extrabold text-center tracking-tight mb-3 bg-linear-to-r from-white via-cyan-200 to-blue-400 bg-clip-text text-transparent leading-tight">How can I help you?</h2>
+              <h2 className="welcome-title text-3xl sm:text-4xl md:text-5xl font-extrabold text-center tracking-tight mb-3 bg-linear-to-r from-white via-violet-200 to-blue-400 bg-clip-text text-transparent leading-tight">How can I help you?</h2>
               <p className="welcome-subtitle text-zinc-500 text-sm sm:text-base mb-8 text-center max-w-md leading-relaxed font-medium">
                 Search, reason, create, and solve — powered by multi-model AI.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 w-full max-w-lg">
                 {homeSuggestions.map((s) => (
                   <button key={s} type="button" onClick={() => send(s)}
-                    className="suggestion-chip text-left rounded-xl border border-zinc-800/80 bg-zinc-900/50 px-4 py-3.5 text-sm text-zinc-300 hover:bg-zinc-800/70 hover:text-white hover:border-cyan-500/30 transition-all group">
-                    <span className="group-hover:text-cyan-300 transition">{s}</span>
+                    className="suggestion-chip text-left rounded-xl border border-zinc-800/80 bg-zinc-900/50 px-4 py-3.5 text-sm text-zinc-300 hover:bg-zinc-800/70 hover:text-white hover:border-violet-500/30 transition-all group">
+                    <span className="group-hover:text-violet-300 transition">{s}</span>
                   </button>
                 ))}
               </div>
@@ -3574,7 +3574,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 <div key={i} data-answer-index={m.role === "assistant" ? i : undefined} className={`message-bubble flex gap-2.5 sm:gap-3 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
                   {/* Avatar */}
                   <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 overflow-hidden ${
-                    m.role === "assistant" ? "bg-linear-to-br from-cyan-500 to-blue-600 shadow-md shadow-cyan-500/10" : "bg-zinc-700"
+                    m.role === "assistant" ? "bg-linear-to-br from-violet-500 to-blue-600 shadow-md shadow-violet-500/10" : "bg-zinc-700"
                   }`}>
                     {m.role === "assistant" ? <CredonLogo size={22} /> : <span className="text-[10px] sm:text-[11px] font-bold">{displayName[0]?.toUpperCase() ?? "U"}</span>}
                   </div>
@@ -3583,7 +3583,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                   <div className={`flex flex-col max-w-[95%] sm:max-w-[88%] min-w-0 ${m.role === "user" ? "items-end" : "items-start"}`}>
                     {/* Reply context (WhatsApp-style) */}
                     {m.replyTo && (
-                      <div className="mb-1 rounded-lg bg-zinc-800/50 border-l-2 border-cyan-500/60 px-3 py-1.5 max-w-full">
+                      <div className="mb-1 rounded-lg bg-zinc-800/50 border-l-2 border-violet-500/60 px-3 py-1.5 max-w-full">
                         <p className="text-[11px] text-zinc-500 truncate">{m.replyTo.slice(0, 100)}</p>
                       </div>
                     )}
@@ -3620,7 +3620,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
 
                     {m.role === "assistant" && m.text !== GREET && (
                       <details className="group mb-1.5 text-[10px] text-zinc-500">
-                        <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full border border-zinc-800/70 bg-zinc-950/45 px-2 py-0.5 hover:border-cyan-500/25 hover:text-zinc-300">
+                        <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full border border-zinc-800/70 bg-zinc-950/45 px-2 py-0.5 hover:border-violet-500/25 hover:text-zinc-300">
                           <span>{inferIntentLabel([...messages.slice(0, i)].reverse().find((item) => item.role === "user")?.text ?? m.text, m).replace(" selected", "")}</span>
                           <span className="text-zinc-700">Details</span>
                         </summary>
@@ -3635,7 +3635,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                     {/* Bubble */}
                     <div className={`rounded-2xl px-4 py-3 ${
                       m.role === "user"
-                        ? "bg-white/8 border border-cyan-400/30 text-white rounded-tr-md shadow-lg shadow-cyan-500/10 backdrop-blur-lg"
+                        ? "bg-white/8 border border-violet-400/30 text-white rounded-tr-md shadow-lg shadow-violet-500/10 backdrop-blur-lg"
                         : "bg-zinc-900/60 border border-zinc-700/40 rounded-tl-md backdrop-blur-md"
                     }`}>
                       {(() => {
@@ -3645,12 +3645,12 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                         const points = extractMainPoints(m.text);
                         if (!points.length) return null;
                         return (
-                        <div className="mb-2.5 rounded-xl border border-cyan-500/25 bg-cyan-500/6 p-2.5">
-                          <p className="text-[11px] font-medium text-cyan-200 mb-2 tracking-wide uppercase">Main Points</p>
+                        <div className="mb-2.5 rounded-xl border border-violet-500/25 bg-violet-500/6 p-2.5">
+                          <p className="text-[11px] font-medium text-violet-200 mb-2 tracking-wide uppercase">Main Points</p>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {points.map((point, idx) => (
-                              <div key={idx} className="rounded-lg border border-cyan-500/20 bg-zinc-900/65 px-2.5 py-2 text-[11px] text-zinc-200 leading-relaxed">
-                                <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-cyan-500/20 text-cyan-200 text-[10px] mr-1.5 align-middle">{idx + 1}</span>
+                              <div key={idx} className="rounded-lg border border-violet-500/20 bg-zinc-900/65 px-2.5 py-2 text-[11px] text-zinc-200 leading-relaxed">
+                                <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-violet-500/20 text-violet-200 text-[10px] mr-1.5 align-middle">{idx + 1}</span>
                                 <span className="align-middle">{point}</span>
                               </div>
                             ))}
@@ -3660,7 +3660,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                       })()}
                       {m.role === "assistant" && m.text !== GREET ? (
                         <>
-                        <div className="prose prose-invert prose-sm max-w-none text-[var(--answer-size)] leading-relaxed [&_pre]:bg-zinc-900/80 [&_pre]:border [&_pre]:border-zinc-700/30 [&_pre]:rounded-xl [&_pre]:p-3 [&_pre]:overflow-x-auto [&_code]:text-cyan-300 [&_code]:text-[13px] [&_a]:text-cyan-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-cyan-500/30 hover:[&_a]:decoration-cyan-500 [&_h1]:text-xl [&_h1]:tracking-tight [&_h2]:text-lg [&_h2]:tracking-tight [&_h3]:text-base [&_h1]:font-bold [&_h2]:font-semibold [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_li]:my-1 [&_blockquote]:border-l-2 [&_blockquote]:border-cyan-500/40 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-zinc-300 [&_table]:border-collapse [&_th]:border [&_th]:border-zinc-700 [&_th]:px-3 [&_th]:py-1.5 [&_th]:bg-zinc-800 [&_td]:border [&_td]:border-zinc-700 [&_td]:px-3 [&_td]:py-1.5 [&_hr]:border-zinc-700/50 [&_strong]:text-zinc-100 [&_strong]:font-semibold [&_strong]:bg-cyan-400/10 [&_strong]:px-1.5 [&_strong]:py-0.5 [&_strong]:rounded-md [&_li]:marker:text-cyan-300 [&_p:first-of-type]:text-zinc-100 [&_p:first-of-type]:font-medium">
+                        <div className="prose prose-invert prose-sm max-w-none text-[var(--answer-size)] leading-relaxed [&_pre]:bg-zinc-900/80 [&_pre]:border [&_pre]:border-zinc-700/30 [&_pre]:rounded-xl [&_pre]:p-3 [&_pre]:overflow-x-auto [&_code]:text-violet-300 [&_code]:text-[13px] [&_a]:text-violet-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-violet-500/30 hover:[&_a]:decoration-violet-500 [&_h1]:text-xl [&_h1]:tracking-tight [&_h2]:text-lg [&_h2]:tracking-tight [&_h3]:text-base [&_h1]:font-bold [&_h2]:font-semibold [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_li]:my-1 [&_blockquote]:border-l-2 [&_blockquote]:border-violet-500/40 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-zinc-300 [&_table]:border-collapse [&_th]:border [&_th]:border-zinc-700 [&_th]:px-3 [&_th]:py-1.5 [&_th]:bg-zinc-800 [&_td]:border [&_td]:border-zinc-700 [&_td]:px-3 [&_td]:py-1.5 [&_hr]:border-zinc-700/50 [&_strong]:text-zinc-100 [&_strong]:font-semibold [&_strong]:bg-violet-400/10 [&_strong]:px-1.5 [&_strong]:py-0.5 [&_strong]:rounded-md [&_li]:marker:text-violet-300 [&_p:first-of-type]:text-zinc-100 [&_p:first-of-type]:font-medium">
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm, remarkMath]}
                             rehypePlugins={[rehypeKatex]}
@@ -3685,7 +3685,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                           >
                             {stripSpecialBlocks(m.text) || (m.streaming ? "\u200B" : "")}
                           </ReactMarkdown>
-                          {m.streaming && <span className="inline-block w-2 h-4 bg-cyan-400 animate-pulse rounded-sm ml-0.5 align-text-bottom" />}
+                          {m.streaming && <span className="inline-block w-2 h-4 bg-violet-400 animate-pulse rounded-sm ml-0.5 align-text-bottom" />}
                         </div>
                         {(() => { const chart = parseChartBlock(m.text); return chart ? <ChartBlock chart={chart} /> : null; })()}
                         </>
@@ -3705,7 +3705,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                     {/* Power-user routing details: hidden by default so normal users see answer first. */}
                     {m.role === "assistant" && !m.streaming && m.text !== GREET && (
                       <details className="mt-2 w-full max-w-xl text-xs text-zinc-500">
-                        <summary className="cursor-pointer list-none rounded-xl border border-zinc-800/60 bg-zinc-950/30 px-3 py-2 hover:border-cyan-500/25 hover:text-zinc-300">
+                        <summary className="cursor-pointer list-none rounded-xl border border-zinc-800/60 bg-zinc-950/30 px-3 py-2 hover:border-violet-500/25 hover:text-zinc-300">
                           Details: sources, confidence, and manager route
                         </summary>
                         <FlowTimeline message={m} />
@@ -3724,16 +3724,10 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                     )}
 
                     {m.role === "assistant" && m.metadata?.mode?.master_mode && !m.streaming && (
-                      <p className="mt-1 text-[11px] text-cyan-300/90">Master Mode response: deep reasoning + sources + code optimization</p>
+                      <p className="mt-1 text-[11px] text-violet-300/90">Master Mode response: deep reasoning + sources + code optimization</p>
                     )}
 
                     {m.role === "assistant" && !m.streaming && m.text !== GREET && (
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-xl border border-zinc-800/60 bg-zinc-950/35 px-2 py-1.5">
-                        <span className="text-[10px] uppercase tracking-wide text-zinc-500">Answer style</span>
-                        {ANSWER_STYLES.map((style) => (
-                          <button key={style} type="button" onClick={() => { setAnswerStyle(style); void send(`Rewrite the previous answer in ${style} style without changing the facts.`, { replyContext: m.text }); }} className={`rounded-lg px-2 py-1 text-[10px] transition ${answerStyle === style ? "bg-cyan-500/15 text-cyan-200" : "text-zinc-500 hover:bg-zinc-800/70 hover:text-zinc-200"}`}>{style}</button>
-                        ))}
-                      </div>
                     )}
 
                     {/* Actions row */}
@@ -3768,7 +3762,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                       {m.role === "assistant" && m.text !== GREET && !m.streaming && (
                         <>
                           {/* Reply */}
-                          <button type="button" onClick={() => setReplyTo({ text: m.text, index: i })} className="text-zinc-600 hover:text-cyan-400 transition p-1.5 rounded-lg hover:bg-zinc-800/60" title="Reply to this">
+                          <button type="button" onClick={() => setReplyTo({ text: m.text, index: i })} className="text-zinc-600 hover:text-violet-400 transition p-1.5 rounded-lg hover:bg-zinc-800/60" title="Reply to this">
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
                             </svg>
@@ -3799,7 +3793,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                               <path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10zM17 2h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17" />
                             </svg>
                           </button>
-                          <button type="button" onClick={() => speakAnswer(i, m.text)} className={`text-zinc-600 hover:text-cyan-300 transition p-1.5 rounded-lg hover:bg-zinc-800/60 ${speakingIndex === i ? "text-cyan-300" : ""}`} title="Read aloud with browser text-to-speech">
+                          <button type="button" onClick={() => speakAnswer(i, m.text)} className={`text-zinc-600 hover:text-violet-300 transition p-1.5 rounded-lg hover:bg-zinc-800/60 ${speakingIndex === i ? "text-violet-300" : ""}`} title="Read aloud with browser text-to-speech">
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5L6 9H3v6h3l5 4V5z" /><path strokeLinecap="round" d="M15.54 8.46a5 5 0 010 7.07M18.36 5.64a9 9 0 010 12.72" /></svg>
                           </button>
                           {/* Copy */}
@@ -3834,12 +3828,12 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                                 </div>
                                 <div className="grid grid-cols-2 gap-2 text-[12px] sm:gap-1.5 sm:text-[11px]">
                                   {browserSupportsNativeShare && (
-                                    <button type="button" onClick={() => { void shareAssistantToChannel("native", i, m); }} className="rounded-xl border border-zinc-700/50 px-3 py-2.5 text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200 sm:rounded-lg sm:px-2 sm:py-2">Share</button>
+                                    <button type="button" onClick={() => { void shareAssistantToChannel("native", i, m); }} className="rounded-xl border border-zinc-700/50 px-3 py-2.5 text-zinc-200 hover:border-violet-500/40 hover:text-violet-200 sm:rounded-lg sm:px-2 sm:py-2">Share</button>
                                   )}
-                                  <button type="button" onClick={() => { void shareAssistantToChannel("copy", i, m); }} className="rounded-xl border border-zinc-700/50 px-3 py-2.5 text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200 sm:rounded-lg sm:px-2 sm:py-2">Copy</button>
-                                  <button type="button" onClick={() => { void shareAssistantToChannel("whatsapp", i, m); }} className="rounded-xl border border-zinc-700/50 px-3 py-2.5 text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200 sm:rounded-lg sm:px-2 sm:py-2">WhatsApp</button>
-                                  <button type="button" onClick={() => { void shareAssistantToChannel("email", i, m); }} className="rounded-xl border border-zinc-700/50 px-3 py-2.5 text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200 sm:rounded-lg sm:px-2 sm:py-2">Email</button>
-                                  <button type="button" onClick={() => { void shareAssistantToChannel("sms", i, m); }} className="col-span-2 rounded-xl border border-zinc-700/50 px-3 py-2.5 text-zinc-200 hover:border-cyan-500/40 hover:text-cyan-200 sm:rounded-lg sm:px-2 sm:py-2">SMS</button>
+                                  <button type="button" onClick={() => { void shareAssistantToChannel("copy", i, m); }} className="rounded-xl border border-zinc-700/50 px-3 py-2.5 text-zinc-200 hover:border-violet-500/40 hover:text-violet-200 sm:rounded-lg sm:px-2 sm:py-2">Copy</button>
+                                  <button type="button" onClick={() => { void shareAssistantToChannel("whatsapp", i, m); }} className="rounded-xl border border-zinc-700/50 px-3 py-2.5 text-zinc-200 hover:border-violet-500/40 hover:text-violet-200 sm:rounded-lg sm:px-2 sm:py-2">WhatsApp</button>
+                                  <button type="button" onClick={() => { void shareAssistantToChannel("email", i, m); }} className="rounded-xl border border-zinc-700/50 px-3 py-2.5 text-zinc-200 hover:border-violet-500/40 hover:text-violet-200 sm:rounded-lg sm:px-2 sm:py-2">Email</button>
+                                  <button type="button" onClick={() => { void shareAssistantToChannel("sms", i, m); }} className="col-span-2 rounded-xl border border-zinc-700/50 px-3 py-2.5 text-zinc-200 hover:border-violet-500/40 hover:text-violet-200 sm:rounded-lg sm:px-2 sm:py-2">SMS</button>
                                 </div>
                               </div>
                             )}
@@ -3855,7 +3849,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                       {m.role === "user" && (
                         <>
                           {isCodeLike(m.text) && (
-                            <button type="button" onClick={() => quickFixCodeFromMessage(i)} className="text-zinc-600 hover:text-cyan-300 transition p-1 rounded hover:bg-zinc-800/60 text-[10px] font-medium" title="Fix this code with Code Mode">
+                            <button type="button" onClick={() => quickFixCodeFromMessage(i)} className="text-zinc-600 hover:text-violet-300 transition p-1 rounded hover:bg-zinc-800/60 text-[10px] font-medium" title="Fix this code with Code Mode">
                               Fix Code
                             </button>
                           )}
@@ -3916,9 +3910,9 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                   <div className="bg-zinc-800/80 border border-zinc-700/40 rounded-2xl rounded-tl-md px-5 py-4">
                     <div className="flex items-center gap-2">
                       <div className="flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-[bounce_1s_infinite]" />
-                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-[bounce_1s_infinite_0.2s]" />
-                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-[bounce_1s_infinite_0.4s]" />
+                        <span className="w-2 h-2 rounded-full bg-violet-400 animate-[bounce_1s_infinite]" />
+                        <span className="w-2 h-2 rounded-full bg-violet-400 animate-[bounce_1s_infinite_0.2s]" />
+                        <span className="w-2 h-2 rounded-full bg-violet-400 animate-[bounce_1s_infinite_0.4s]" />
                       </div>
                       <span className="text-xs text-zinc-500">Thinking</span>
                     </div>
@@ -3944,8 +3938,8 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {followUps.map((s, i) => (
                   <button key={i} type="button" onClick={() => send(s)}
-                    className="suggestion-chip flex min-w-[220px] items-center gap-2 text-xs text-zinc-300 bg-zinc-800/60 hover:bg-cyan-500/10 border border-zinc-700/40 hover:border-cyan-500/30 rounded-xl px-3 py-2.5 transition hover:text-cyan-300 text-left">
-                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-zinc-700/60 text-[10px] font-bold text-cyan-400 shrink-0">{i + 1}</span>
+                    className="suggestion-chip flex min-w-[220px] items-center gap-2 text-xs text-zinc-300 bg-zinc-800/60 hover:bg-violet-500/10 border border-zinc-700/40 hover:border-violet-500/30 rounded-xl px-3 py-2.5 transition hover:text-violet-300 text-left">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-zinc-700/60 text-[10px] font-bold text-violet-400 shrink-0">{i + 1}</span>
                     <span>{s}</span>
                   </button>
                 ))}
@@ -3956,7 +3950,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
 
         {/* ─── Login prompt banner ─── */}
         {loginPrompt && (
-          <div className="border-t border-cyan-500/20 bg-cyan-500/5 px-4 py-3 flex items-center justify-between gap-3">
+          <div className="border-t border-violet-500/20 bg-violet-500/5 px-4 py-3 flex items-center justify-between gap-3">
             <p className="text-sm text-zinc-300">
               {loginPrompt === "deep-think"
                 ? "Sign in to use DeepThink mode"
@@ -3968,14 +3962,14 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
             </p>
             <div className="flex items-center gap-2 shrink-0">
               <button type="button" onClick={() => setLoginPrompt(null)} className="text-xs text-zinc-500 hover:text-zinc-300 transition px-2 py-1 rounded-lg hover:bg-zinc-800/60">Dismiss</button>
-              <button type="button" onClick={onSignOut} className="text-xs font-medium text-black bg-cyan-400 hover:bg-cyan-300 px-3 py-1.5 rounded-lg transition">Sign In</button>
+              <button type="button" onClick={onSignOut} className="text-xs font-medium text-black bg-violet-400 hover:bg-violet-300 px-3 py-1.5 rounded-lg transition">Sign In</button>
             </div>
           </div>
         )}
 
         {/* ─── Input Area ─── */}
         <div className="border-t border-zinc-800/40 p-2 sm:p-4 bg-zinc-950/70 backdrop-blur-xl">
-          {connectionNotice && <div className="mx-auto mb-2 max-w-3xl rounded-xl border border-cyan-400/20 bg-cyan-500/8 px-3 py-2 text-xs text-cyan-100">{connectionNotice}</div>}
+          {connectionNotice && <div className="mx-auto mb-2 max-w-3xl rounded-xl border border-violet-400/20 bg-violet-500/8 px-3 py-2 text-xs text-violet-100">{connectionNotice}</div>}
           <form onSubmit={onSubmit} className="max-w-3xl mx-auto">
             {/* Editing indicator */}
             {editingIndex !== null && (
@@ -3993,9 +3987,9 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
 
             {/* Reply context chip */}
             {replyTo && (
-              <div className="mb-2 flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/5 px-3 py-2">
+              <div className="mb-2 flex items-center gap-2 rounded-xl border border-violet-500/30 bg-violet-500/5 px-3 py-2">
                 <div className="flex-1 min-w-0">
-                  <p className="text-[11px] text-cyan-400 font-medium mb-0.5">Replying to:</p>
+                  <p className="text-[11px] text-violet-400 font-medium mb-0.5">Replying to:</p>
                   <p className="text-xs text-zinc-400 truncate">{replyTo.text.slice(0, 120)}</p>
                 </div>
                 <button type="button" onClick={() => setReplyTo(null)} className="text-zinc-500 hover:text-white transition shrink-0" title="Cancel reply">
@@ -4039,7 +4033,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
             {isOnline && query && <p className="mb-1 text-[10px] text-zinc-600">Saved draft</p>}
 
             {allModesActive && (
-              <div className="mb-1.5 rounded-xl border border-cyan-400/35 bg-linear-to-r from-cyan-500/12 via-blue-500/8 to-cyan-500/12 px-2.5 py-1 text-[10px] sm:text-[11px] text-cyan-100 trinity-glow">
+              <div className="mb-1.5 rounded-xl border border-violet-400/35 bg-linear-to-r from-violet-500/12 via-blue-500/8 to-violet-500/12 px-2.5 py-1 text-[10px] sm:text-[11px] text-violet-100 trinity-glow">
                 <span className="sm:hidden">Master Mode active</span>
                 <span className="hidden sm:inline">Master Mode active: Web Search + DeepThink + Code Mode</span>
               </div>
@@ -4063,7 +4057,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                           return next;
                         });
                       }}
-                      className={`h-9 rounded-lg border text-[11px] font-medium transition ${codeMode ? "border-cyan-500/45 bg-cyan-500/12 text-cyan-200" : "border-zinc-700/50 bg-zinc-900/80 text-zinc-400"}`}
+                      className={`h-9 rounded-lg border text-[11px] font-medium transition ${codeMode ? "border-violet-500/45 bg-violet-500/12 text-violet-200" : "border-zinc-700/50 bg-zinc-900/80 text-zinc-400"}`}
                     >
                       Code Mode
                     </button>
@@ -4086,7 +4080,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               )}
             </div>
 
-            <div className={`flex flex-col gap-2 bg-zinc-900/80 border rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 focus-within:border-cyan-500/40 focus-within:shadow-cyan-500/5 transition-all shadow-lg shadow-black/20 ${allModesActive ? "border-cyan-500/45 trinity-glow" : "border-zinc-700/50"}`}>
+            <div className={`flex flex-col gap-2 bg-zinc-900/80 border rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 focus-within:border-violet-500/40 focus-within:shadow-violet-500/5 transition-all shadow-lg shadow-black/20 ${allModesActive ? "border-violet-500/45 trinity-glow" : "border-zinc-700/50"}`}>
               <textarea
                 ref={inputRef}
                 value={query}
@@ -4102,7 +4096,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               {/* Attach file button */}
               <div className="relative shrink-0">
               <button type="button" onClick={() => setInputMenuOpen((prev) => !prev)}
-                className={`min-h-10 min-w-10 p-2 sm:p-2.5 transition rounded-xl shrink-0 flex items-center justify-center ${inputMenuOpen ? "text-cyan-200 bg-cyan-500/10" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`} title="Add image, document, or camera">
+                className={`min-h-10 min-w-10 p-2 sm:p-2.5 transition rounded-xl shrink-0 flex items-center justify-center ${inputMenuOpen ? "text-violet-200 bg-violet-500/10" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`} title="Add image, document, or camera">
                 <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
                 </svg>
@@ -4119,7 +4113,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               <button
                 type="button"
                 onClick={() => setMobileModesOpen((prev) => !prev)}
-                className={`sm:hidden min-h-10 min-w-10 p-2 rounded-xl transition shrink-0 flex items-center justify-center ${mobileModesOpen ? "text-cyan-300 bg-cyan-500/10" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
+                className={`sm:hidden min-h-10 min-w-10 p-2 rounded-xl transition shrink-0 flex items-center justify-center ${mobileModesOpen ? "text-violet-300 bg-violet-500/10" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
                 title="Modes"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
@@ -4136,7 +4130,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                   }
                   setUseWeb((prev) => !prev);
                 }}
-                className={`flex min-h-10 min-w-10 p-2 sm:p-2.5 rounded-xl transition shrink-0 items-center justify-center ${useWeb ? "text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
+                className={`flex min-h-10 min-w-10 p-2 sm:p-2.5 rounded-xl transition shrink-0 items-center justify-center ${useWeb ? "text-violet-400 bg-violet-500/10 hover:bg-violet-500/20" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
                 title={isGuest ? "Sign in to use Web Search" : useWeb ? "Web search ON" : "Web search OFF"}>
                 <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" />
@@ -4159,7 +4153,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                     return next;
                   });
                 }}
-                className={`flex min-h-10 min-w-10 p-2 sm:p-2.5 rounded-xl transition shrink-0 items-center justify-center ${deepThink ? "text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
+                className={`flex min-h-10 min-w-10 p-2 sm:p-2.5 rounded-xl transition shrink-0 items-center justify-center ${deepThink ? "text-violet-400 bg-violet-500/10 hover:bg-violet-500/20" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
                 title={isGuest ? "Sign in to use DeepThink" : deepThink ? "DeepThink ON" : "DeepThink OFF"}
               >
                 <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -4183,7 +4177,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                     return next;
                   });
                 }}
-                className={`hidden sm:flex min-h-10 min-w-10 p-2.5 rounded-xl transition shrink-0 items-center justify-center ${codeMode ? "text-cyan-300 bg-cyan-500/10 border border-cyan-500/30" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
+                className={`hidden sm:flex min-h-10 min-w-10 p-2.5 rounded-xl transition shrink-0 items-center justify-center ${codeMode ? "text-violet-300 bg-violet-500/10 border border-violet-500/30" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"}`}
                 title={isGuest ? "Sign in to use Code Mode" : codeMode ? "Code Mode ON" : "Code Mode OFF"}
               >
                 <span className="text-xs font-bold">&lt;/&gt;</span>
@@ -4213,11 +4207,11 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               <button
                 type="button"
                 onClick={startVoiceInput}
-                className={`relative flex min-h-10 min-w-10 items-center justify-center rounded-xl p-2.5 transition shrink-0 mb-0.5 ${listening ? "bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-400/50 shadow-lg shadow-cyan-500/10" : "text-zinc-500 hover:text-cyan-300 hover:bg-cyan-500/10"}`}
+                className={`relative flex min-h-10 min-w-10 items-center justify-center rounded-xl p-2.5 transition shrink-0 mb-0.5 ${listening ? "bg-violet-500/15 text-violet-200 ring-1 ring-violet-400/50 shadow-lg shadow-violet-500/10" : "text-zinc-500 hover:text-violet-300 hover:bg-violet-500/10"}`}
                 title={listening ? "Listening..." : "Voice input"}
                 aria-pressed={listening}
               >
-                {listening && <span className="absolute inset-0 rounded-xl bg-cyan-400/10 animate-pulse" aria-hidden="true" />}
+                {listening && <span className="absolute inset-0 rounded-xl bg-violet-400/10 animate-pulse" aria-hidden="true" />}
                 <svg className="relative w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-12 0v1.5a6 6 0 006 6zm0 0v3m-3 0h6M12 15.75a3 3 0 003-3V5.25a3 3 0 10-6 0v7.5a3 3 0 003 3z" />
                 </svg>
@@ -4231,7 +4225,7 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
                 </button>
               ) : (
                 <button type="submit" disabled={(!query.trim() && attachedFiles.length === 0) || uploadingFiles}
-                  className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-linear-to-r from-cyan-500 to-blue-600 flex items-center justify-center disabled:opacity-30 transition hover:brightness-110 shrink-0 mb-0.5" title="Send">
+                  className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-linear-to-r from-violet-500 to-blue-600 flex items-center justify-center disabled:opacity-30 transition hover:brightness-110 shrink-0 mb-0.5" title="Send">
                   <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
                   </svg>
@@ -4241,10 +4235,10 @@ function ChatPage({ user, onSignOut, isGuest }: { user: User | null; onSignOut: 
               </div>
             </div>
             {uploadingFiles && uploadStatus && (
-              <p className="text-center text-[11px] text-cyan-300 mt-1.5 sm:mt-2 flex items-center justify-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-cyan-300 animate-dot-1" />
-                <span className="w-1.5 h-1.5 rounded-full bg-cyan-300 animate-dot-2" />
-                <span className="w-1.5 h-1.5 rounded-full bg-cyan-300 animate-dot-3" />
+              <p className="text-center text-[11px] text-violet-300 mt-1.5 sm:mt-2 flex items-center justify-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-violet-300 animate-dot-1" />
+                <span className="w-1.5 h-1.5 rounded-full bg-violet-300 animate-dot-2" />
+                <span className="w-1.5 h-1.5 rounded-full bg-violet-300 animate-dot-3" />
                 <span>{uploadStatus}</span>
               </p>
             )}
