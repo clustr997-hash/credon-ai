@@ -1,18 +1,17 @@
 import type { Metadata, Viewport } from "next";
 import "katex/dist/katex.min.css";
 import "./globals.css";
+import "./credon-product.css";
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
-  themeColor: "#09090b",
+  themeColor: "#0b0b0d",
 };
 
 export const metadata: Metadata = {
-  title: "Credon AI",
-  description: "Creative retrieval-first AI assistant in English and Hinglish",
+  title: "Credon AI — Think, Research, Build",
+  description: "A personal AI workspace for research, coding, documents and problem solving.",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: "/credon-logo.svg",
@@ -22,20 +21,14 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "CREDON-AI",
+    title: "Credon AI",
   },
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className="antialiased">
-        {children}
-      </body>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }
