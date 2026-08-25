@@ -97,41 +97,71 @@ function SourcesPanel({ sources }: { sources: Source[] }) {
   const [open, setOpen] = useState(false);
   if (!sources.length) return null;
 
+  const knowledgeSources = sources.filter((source) => source.source_type === "knowledge" || source.url.startsWith("credon://knowledge/"));
+  const webSources = sources.filter((source) => !knowledgeSources.includes(source));
+  const headerLabel = webSources.length === 0 ? "Knowledge used" : `${sources.length} source${sources.length > 1 ? "s" : ""}`;
+
+  function renderSource(source: Source, i: number, type: "knowledge" | "web") {
+    const domain = type === "knowledge" ? "Uploaded knowledge" : domainOf(source.url);
+    return (
+      <a
+        key={`${source.url}-${i}`}
+        href={source.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-start gap-3 rounded-lg px-2.5 py-2 transition-colors hover:bg-white/[0.03]"
+      >
+        <span className="mt-0.5 text-[var(--text-dim)]">
+          {type === "knowledge" ? <IconFile size={15} /> : (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={faviconFor(source.url)} alt="" width={16} height={16} className="rounded-sm" />
+            </>
+          )}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px]" style={{ color: "var(--text)" }}>
+            {source.title || domain}
+          </span>
+          <span className="block truncate text-[11.5px]" style={{ color: "var(--text-faint)" }}>
+            {domain}
+          </span>
+        </span>
+      </a>
+    );
+  }
+
   return (
     <div className="mt-3 overflow-hidden rounded-xl border" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
       <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 transition-colors hover:bg-white/[0.02]">
         <span className="text-[var(--text-dim)]">
-          <IconGlobe size={15} />
+          {webSources.length === 0 ? <IconFile size={15} /> : <IconGlobe size={15} />}
         </span>
         <span className="text-[12.5px] font-medium" style={{ color: "var(--text-dim)" }}>
-          {sources.length} source{sources.length > 1 ? "s" : ""}
+          {headerLabel}
         </span>
         <span className="ml-auto text-[var(--text-faint)]">
           {open ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
         </span>
       </button>
       {open && (
-        <div className="space-y-1 border-t p-2" style={{ borderColor: "var(--border)" }}>
-          {sources.map((source, i) => (
-            <a
-              key={`${source.url}-${i}`}
-              href={source.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-start gap-3 rounded-lg px-2.5 py-2 transition-colors hover:bg-white/[0.03]"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={faviconFor(source.url)} alt="" width={16} height={16} className="mt-0.5 rounded-sm" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px]" style={{ color: "var(--text)" }}>
-                  {source.title || domainOf(source.url)}
-                </span>
-                <span className="block truncate text-[11.5px]" style={{ color: "var(--text-faint)" }}>
-                  {domainOf(source.url)}
-                </span>
-              </span>
-            </a>
-          ))}
+        <div className="space-y-3 border-t p-2" style={{ borderColor: "var(--border)" }}>
+          {knowledgeSources.length > 0 && (
+            <section>
+              <p className="px-2.5 pb-1 text-[11px] font-medium uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>
+                Local uploaded knowledge
+              </p>
+              {knowledgeSources.map((source, i) => renderSource(source, i, "knowledge"))}
+            </section>
+          )}
+          {webSources.length > 0 && (
+            <section>
+              <p className="px-2.5 pb-1 text-[11px] font-medium uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>
+                Live web results
+              </p>
+              {webSources.map((source, i) => renderSource(source, i, "web"))}
+            </section>
+          )}
         </div>
       )}
     </div>

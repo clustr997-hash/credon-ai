@@ -1,6 +1,7 @@
 export type Source = {
   title: string;
   url: string;
+  source_type?: "knowledge" | "web";
   snippet?: string;
   trust_score?: number | string;
 };
