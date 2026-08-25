@@ -155,15 +155,41 @@ def _response_cache_set(key: str, payload: dict[str, Any]) -> None:
             _FAST_RESPONSE_CACHE.popitem(last=False)
 
 
-def _public_model() -> dict[str, str | bool]:
-    return {
-        "id": "credon-alpha-1",
-        "label": "Credon Alpha 1",
+PUBLIC_CREDON_MODELS: list[dict[str, str | bool]] = [
+    {
+        "id": "credon-alpha",
+        "label": "Credon Alpha",
         "provider": "credon",
-        "description": "Adaptive routing engine for speed + accuracy",
+        "description": "Fast, capable — the everyday default",
         "default": True,
         "available": True,
-    }
+    },
+    {
+        "id": "credon-alpha-reasoning",
+        "label": "Credon Alpha Reasoning",
+        "provider": "credon",
+        "description": "Thinks step by step for hard problems",
+        "available": True,
+    },
+    {
+        "id": "credon-deep",
+        "label": "Credon Deep",
+        "provider": "credon",
+        "description": "Extended reasoning for hard research",
+        "available": True,
+    },
+    {
+        "id": "credon-scout",
+        "label": "Credon Scout",
+        "provider": "credon",
+        "description": "Reads images and dense documents",
+        "available": True,
+    },
+]
+
+
+def _public_model() -> list[dict[str, str | bool]]:
+    return [dict(model) for model in PUBLIC_CREDON_MODELS]
 
 
 def _is_greeting(query: str) -> bool:
@@ -1097,11 +1123,13 @@ def _latest_assistant_context(transcript: list[dict[str, str]]) -> str:
 
 @router.get("/models")
 def get_models() -> dict[str, object]:
-    """Return only the public Credon Alpha 1 model.
-    All model selection and orchestration happens internally."""
+    """Return the public Credon model family.
+    All provider routing and orchestration happens internally."""
+    models = _public_model()
+    default_model = next((model for model in models if model.get("default") is True), models[0])
     return {
-        "models": [_public_model()],
-        "default": "credon-alpha-1",
+        "models": models,
+        "default": default_model["id"],
     }
 
 
