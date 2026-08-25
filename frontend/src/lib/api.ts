@@ -26,17 +26,28 @@ export type ThinkingStage = "planning" | "searching" | "thinking" | "generating"
 
 export type AgentStep = {
   id: number;
-  kind: "research" | "reason" | "code";
+  kind: "research" | "browse" | "reason" | "code";
   title: string;
   detail?: string;
   status?: "pending" | "running" | "done";
   terminal?: string[];
 };
 
+export type AgentToolEvent = {
+  name: string;
+  status: "ok" | "error" | "disabled" | string;
+  output?: string;
+  files_changed?: string[];
+};
+
 export type AgentState = {
   goal: string;
   steps: AgentStep[];
   activeTerminal: string[];
+  toolEvents?: AgentToolEvent[];
+  filesChanged?: string[];
+  capabilities?: Record<string, boolean>;
+  unsafeEnabled?: boolean;
 } | null;
 
 export type Message = {

@@ -24,13 +24,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncGenerator
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.services.models import generate_sync
 from app.services.retrieval_v2 import retrieve_sources
 from app.services.browse import read_page, search_arxiv, youtube_transcript
+from app.services import github_svc
 
 router = APIRouter()
 
@@ -56,10 +57,109 @@ class AgentRunRequest(BaseModel):
     max_steps: int = Field(default=4, ge=2, le=_MAX_STEPS)
     context: str = ""
     is_follow_up: bool = False
+    auth_email: str = ""
+    unsafe_tools_enabled: bool = False
 
 
 def _sse(payload: dict[str, Any]) -> str:
     return f"data: {_json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+_SAFE_COMMANDS = {"python", "python3", "pytest", "npm", "pnpm", "yarn", "node", "git"}
+_MUTATING_GIT = {"commit", "push", "pull"}
+
+
+def _owner_email() -> str:
+    return os.getenv("OWNER_EMAIL", "").strip().lower()
+
+
+def _is_owner(email: str) -> bool:
+    owner = _owner_email()
+    return bool(owner and email.strip().lower() == owner)
+
+
+def _unsafe_tools_enabled(req: AgentRunRequest) -> bool:
+    return _is_owner(req.auth_email) and req.unsafe_tools_enabled and os.getenv("AGENT_UNSAFE_TOOLS_ENABLED", "false").lower() == "true"
+
+
+def _safe_workspace_path(ws: Path, rel_path: str) -> Path:
+    candidate = (ws / rel_path).resolve()
+    root = ws.resolve()
+    if root != candidate and root not in candidate.parents:
+        raise ValueError("Path escapes workspace")
+    return candidate
+
+
+class AgentToolbox:
+    """Capability-gated tools exposed to the agent runtime after authorization."""
+
+    def __init__(self, req: AgentRunRequest, ws: Path):
+        self.req = req
+        self.ws = ws
+        self.authenticated = bool(req.user_id.strip() and req.auth_email.strip())
+        self.owner = _is_owner(req.auth_email)
+        self.unsafe_enabled = _unsafe_tools_enabled(req)
+
+    def capabilities(self) -> dict[str, bool]:
+        return {
+            "workspace_read": self.authenticated,
+            "workspace_write": self.authenticated,
+            "command_execute": self.unsafe_enabled,
+            "git_status": self.authenticated,
+            "git_diff": self.authenticated,
+            "git_commit": self.unsafe_enabled,
+            "github_push_pull_pr": self.unsafe_enabled and github_svc.token_present(),
+            "codebase_search": self.authenticated,
+        }
+
+    def _require(self, capability: str) -> None:
+        if not self.capabilities().get(capability):
+            raise PermissionError(f"Tool disabled: {capability}")
+
+    def event(self, name: str, status: str, output: str = "", **extra: Any) -> dict[str, Any]:
+        return {"type": "tool", "name": name, "status": status, "output": output[-4000:], **extra}
+
+    def read_file(self, path: str) -> str:
+        self._require("workspace_read")
+        return _safe_workspace_path(self.ws, path).read_text(encoding="utf-8", errors="replace")[:60000]
+
+    def write_file(self, path: str, content: str) -> dict[str, Any]:
+        self._require("workspace_write")
+        safe = _safe_workspace_path(self.ws, path)
+        safe.parent.mkdir(parents=True, exist_ok=True)
+        safe.write_text(content[:60000], encoding="utf-8")
+        rel = str(safe.relative_to(self.ws))
+        return {"path": rel, "size": safe.stat().st_size, "preview": content[:600], "modified": datetime.now(timezone.utc).isoformat()}
+
+    def run_command(self, command: list[str], timeout: int = 20) -> tuple[bool, str]:
+        self._require("command_execute")
+        if not command or command[0] not in _SAFE_COMMANDS:
+            raise PermissionError("Command is not allowlisted")
+        proc = subprocess.run(command, cwd=self.ws, capture_output=True, text=True, timeout=min(timeout, 60))
+        return proc.returncode == 0, ((proc.stdout or "") + (proc.stderr or ""))[-8000:]
+
+    def git(self, op: str, message: str = "agent update") -> tuple[bool, str]:
+        if op in {"status", "diff"}:
+            self._require(f"git_{op}")
+            cmd = ["git", op, "--short"] if op == "status" else ["git", "diff", "--stat"]
+        elif op == "commit":
+            self._require("git_commit")
+            cmd = ["git", "commit", "-am", message[:200]]
+        else:
+            raise PermissionError("Unsupported git operation")
+        proc = subprocess.run(cmd, cwd=self.ws, capture_output=True, text=True, timeout=30)
+        return proc.returncode == 0, ((proc.stdout or "") + (proc.stderr or ""))[-8000:]
+
+    def github(self, op: str, **kwargs: Any) -> dict[str, Any]:
+        self._require("github_push_pull_pr")
+        if op == "open_pr":
+            return github_svc.open_pr(str(kwargs.get("branch") or ""), str(kwargs.get("title") or "Agent update"), str(kwargs.get("body") or ""))
+        raise PermissionError("GitHub operation is unavailable in this sandbox")
+
+    def search_codebase(self, query: str) -> str:
+        self._require("codebase_search")
+        proc = subprocess.run(["rg", "-n", "--", query[:200], "."], cwd=self.ws, capture_output=True, text=True, timeout=10)
+        return ((proc.stdout or "") + (proc.stderr or ""))[-8000:]
 
 
 def _workspace(user_id: str, session_id: str) -> Path:
@@ -221,6 +321,9 @@ def _save_file(ws: Path, filename: str, content: str) -> str:
 async def _agent_stream(req: AgentRunRequest) -> AsyncGenerator[str, None]:
     started = time.time()
     ws = _workspace(req.user_id, req.session_id)
+    tools = AgentToolbox(req, ws)
+    if not tools.authenticated:
+        raise HTTPException(status_code=401, detail="Authenticated session required for agent tools")
     engine = "Credon engine" if os.getenv("USE_MODEL_GENERATION", "true").lower() == "true" else "Credon engine"
 
     yield _sse({"type": "status", "stage": "planning", "message": f"{engine}: analyzing goal and drafting plan..."})
@@ -228,6 +331,7 @@ async def _agent_stream(req: AgentRunRequest) -> AsyncGenerator[str, None]:
     yield _sse({"type": "plan", "goal": req.goal, "steps": [
         {k: step[k] for k in ("id", "kind", "title", "detail")} for step in plan
     ]})
+    yield _sse({"type": "capabilities", "capabilities": tools.capabilities(), "unsafe_enabled": tools.unsafe_enabled})
 
     collected: list[str] = []
     all_sources: list[dict[str, str]] = []
@@ -269,8 +373,10 @@ async def _agent_stream(req: AgentRunRequest) -> AsyncGenerator[str, None]:
                 terminal.append(f"  ✓ read via {page['method']} ({len(page['text'])} chars)")
                 collected.append(f"### Page: {url}\n{page['text'][:4000]}")
                 all_sources.append({"title": url, "url": url, "snippet": page["text"][:300]})
-                fname = _save_file(ws, f"page-{sid}.md", f"# {url}\n\n{page['text']}")
-                created_files.append({"path": fname, "preview": page["text"][:600]})
+                file_info = tools.write_file(f"page-{sid}.md", f"# {url}\n\n{page['text']}")
+                fname = file_info["path"]
+                created_files.append(file_info)
+                yield _sse(tools.event("workspace.write", "ok", f"wrote {fname}", files_changed=[fname]))
                 yield _sse({"type": "file", "step_id": sid, "file": created_files[-1]})
             else:
                 terminal.append("  ✕ page could not be read (may require the browser tool)")
@@ -289,8 +395,10 @@ async def _agent_stream(req: AgentRunRequest) -> AsyncGenerator[str, None]:
                     terminal.append(f"  │ ... (+{len(code.splitlines()) - 12} lines)")
                 fname = step.get("filename") or f"script-{sid}.py"
                 if fname.endswith((".md", ".txt", ".json", ".csv", ".html", ".css", ".js", ".py", ".ts")) and not code.lstrip().startswith(("print", "import", "from", "def", "class", "#!")):
-                    saved = _save_file(ws, fname, code)
-                    created_files.append({"path": saved, "preview": code[:600]})
+                    file_info = tools.write_file(fname, code)
+                    saved = file_info["path"]
+                    created_files.append(file_info)
+                    yield _sse(tools.event("workspace.write", "ok", f"wrote {saved}", files_changed=[saved]))
                     yield _sse({"type": "file", "step_id": sid, "file": created_files[-1]})
                     terminal.append(f"  ✓ wrote {saved}")
                     ok = True
@@ -298,8 +406,10 @@ async def _agent_stream(req: AgentRunRequest) -> AsyncGenerator[str, None]:
                     ok, out, err = _run_python(code, ws)
                     if ok and out.strip():
                         result_name = f"output-{sid}.txt"
-                        saved = _save_file(ws, result_name, out)
-                        created_files.append({"path": saved, "preview": out[:600]})
+                        file_info = tools.write_file(result_name, out)
+                        saved = file_info["path"]
+                        created_files.append(file_info)
+                        yield _sse(tools.event("workspace.write", "ok", f"wrote {saved}", files_changed=[saved]))
                         yield _sse({"type": "file", "step_id": sid, "file": created_files[-1]})
             else:
                 err = "Model returned no code for this step."
@@ -335,9 +445,11 @@ async def _agent_stream(req: AgentRunRequest) -> AsyncGenerator[str, None]:
     )
     final_answer = generate_sync([{"role": "user", "content": final_prompt}])
 
-    report_name = _save_file(ws, f"report-{datetime.now(timezone.utc).strftime('%H%M%S')}.md",
-                             f"# {req.goal}\n\n{final_answer}")
-    created_files.append({"path": report_name, "preview": final_answer[:600]})
+    report_info = tools.write_file(f"report-{datetime.now(timezone.utc).strftime('%H%M%S')}.md",
+                                   f"# {req.goal}\n\n{final_answer}")
+    report_name = report_info["path"]
+    created_files.append(report_info)
+    yield _sse(tools.event("workspace.write", "ok", f"wrote {report_name}", files_changed=[report_name]))
     yield _sse({"type": "file", "step_id": 0, "file": created_files[-1]})
 
     yield _sse({
@@ -376,6 +488,9 @@ def run_job_sync(user_id: str, goal: str) -> str:
 
 @router.post("/agent/run")
 async def agent_run(body: AgentRunRequest):
+    probe_ws = _workspace(body.user_id, body.session_id)
+    if not AgentToolbox(body, probe_ws).authenticated:
+        raise HTTPException(status_code=401, detail="Authenticated session required for agent tools")
     return StreamingResponse(
         _agent_stream(body),
         media_type="text/event-stream",
