@@ -11,7 +11,7 @@ const KIND_LABEL: Record<string, string> = {
   code: "Code",
 };
 
-type Tab = "plan" | "terminal" | "files" | "report";
+type Tab = "plan" | "tools" | "terminal" | "files" | "report";
 
 export function AgentPanel({
   agent,
@@ -51,6 +51,7 @@ export function AgentPanel({
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: "plan", label: "Plan", icon: <IconList size={13} />, badge: agent.steps.length },
+    { id: "tools", label: "Tools", icon: <IconTerminalSquare size={13} />, badge: agent.toolEvents?.length },
     { id: "terminal", label: "Terminal", icon: <IconTerminalSquare size={13} /> },
     { id: "files", label: "Files", icon: <IconFolder size={13} />, badge: files.length },
     { id: "report", label: "Report", icon: <IconCheck size={13} /> },
@@ -151,6 +152,34 @@ export function AgentPanel({
               </div>
             )}
 
+            {tab === "tools" && (
+              <div className="space-y-3">
+                <div className="rounded-xl border p-3" style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}>
+                  <p className="text-[12px] font-semibold" style={{ color: "var(--text)" }}>Server-authorized capabilities</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {Object.entries(agent.capabilities || {}).map(([name, enabled]) => (
+                      <span key={name} className="rounded-full px-2 py-0.5 font-mono text-[10.5px]" style={{ background: enabled ? "rgba(74,222,128,0.14)" : "rgba(248,113,113,0.10)", color: enabled ? "rgba(74,222,128,0.9)" : "rgba(248,113,113,0.8)" }}>
+                        {enabled ? "✓" : "×"} {name}
+                      </span>
+                    ))}
+                  </div>
+                  {!agent.unsafeEnabled && <p className="mt-2 text-[11.5px]" style={{ color: "var(--text-faint)" }}>Unsafe operations remain disabled until the authenticated owner enables them server-side.</p>}
+                </div>
+                {(agent.toolEvents || []).length === 0 ? (
+                  <p className="py-6 text-center text-[12.5px]" style={{ color: "var(--text-faint)" }}>Tool calls will appear here as the agent runs.</p>
+                ) : (agent.toolEvents || []).map((evt, i) => (
+                  <div key={`${evt.name}-${i}`} className="rounded-xl border p-3" style={{ borderColor: "var(--border)" }}>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-mono text-[12px]" style={{ color: "var(--text)" }}>{evt.name}</span>
+                      <span className="rounded-full px-2 py-0.5 font-mono text-[10px]" style={{ background: "var(--surface-2)", color: evt.status === "ok" ? "rgba(74,222,128,0.9)" : "rgba(248,113,113,0.85)" }}>{evt.status}</span>
+                    </div>
+                    {evt.output && <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[11px]" style={{ color: "var(--text-dim)" }}>{evt.output}</pre>}
+                    {!!evt.files_changed?.length && <p className="mt-2 font-mono text-[10.5px]" style={{ color: "var(--text-faint)" }}>changed: {evt.files_changed.join(", ")}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+
             {tab === "terminal" && (
               <div className="overflow-hidden rounded-xl border" style={{ borderColor: "var(--border)", background: "#0a0a0c" }}>
                 <div className="flex items-center justify-between border-b px-3 py-2" style={{ borderColor: "var(--border)" }}>
@@ -185,6 +214,11 @@ export function AgentPanel({
 
             {tab === "files" && (
               <div className="space-y-1.5">
+                {agent.filesChanged?.length ? (
+                  <div className="rounded-xl border p-3 font-mono text-[11px]" style={{ borderColor: "var(--border)", color: "var(--text-dim)" }}>
+                    Changed in this run: {agent.filesChanged.join(", ")}
+                  </div>
+                ) : null}
                 {files.length === 0 && (
                   <p className="py-6 text-center text-[12.5px]" style={{ color: "var(--text-faint)" }}>
                     Files the agent writes will appear here — scripts, outputs, reports.

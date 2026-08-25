@@ -656,7 +656,7 @@ export function Workspace() {
         markBackendUnreachable();
       }
     }
-    await directAgent(goal, signal, patch);
+    patch({ streaming: false, error: true, text: "Agent mode requires the authenticated server-side capability runtime. The backend is unreachable, so no reasoning-only fallback was used." });
   }
 
   async function engineAgent(goal: string, context: string, signal: AbortSignal, patch: (p: Partial<Message>) => void) {
@@ -671,9 +671,45 @@ export function Workspace() {
         max_steps: 4,
         context,
         is_follow_up: messages.some((m) => m.agent),
+        auth_email: user?.email || "",
+        unsafe_tools_enabled: isOwner && localStorage.getItem("credon.agent.unsafeTools") === "true",
       },
       (event) => {
         switch (event.type) {
+          case "capabilities":
+            setMessages((prev) => {
+              const next = [...prev];
+              const idx = next.findIndex((m) => m.streaming);
+              if (idx >= 0) {
+                const existing = next[idx].agent || { goal, steps: [], activeTerminal: [] };
+                next[idx] = {
+                  ...next[idx],
+                  agent: { ...existing, capabilities: event.capabilities || {}, unsafeEnabled: Boolean(event.unsafe_enabled) },
+                };
+              }
+              return next;
+            });
+            break;
+          case "tool":
+            setMessages((prev) => {
+              const next = [...prev];
+              const idx = next.findIndex((m) => m.streaming);
+              if (idx >= 0 && next[idx].agent) {
+                const agent = next[idx].agent!;
+                const changed = Array.isArray(event.files_changed) ? event.files_changed.map(String) : [];
+                next[idx] = {
+                  ...next[idx],
+                  agent: {
+                    ...agent,
+                    toolEvents: [...(agent.toolEvents || []), { name: String(event.name), status: String(event.status), output: String(event.output || ""), files_changed: changed }],
+                    filesChanged: Array.from(new Set([...(agent.filesChanged || []), ...changed])),
+                    activeTerminal: [...agent.activeTerminal, `tool:${String(event.name)} ${String(event.status)}`, ...(event.output ? String(event.output).split("\n").slice(0, 10) : [])].slice(-100),
+                  },
+                };
+              }
+              return next;
+            });
+            break;
           case "plan": {
             const steps: AgentStep[] = (event.steps || []).map((s: Record<string, unknown>) => ({
               id: Number(s.id),
@@ -683,7 +719,7 @@ export function Workspace() {
               status: "pending",
             }));
             patch({
-              agent: { goal: event.goal || goal, steps, activeTerminal: [`$ credon agent --goal "${goal}"`, "◇ plan drafted"] },
+              agent: { goal: event.goal || goal, steps, activeTerminal: [`$ credon agent --goal "${goal}"`, "◇ plan drafted"], toolEvents: [], filesChanged: [] },
             });
             break;
           }
