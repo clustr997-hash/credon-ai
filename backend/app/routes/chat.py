@@ -705,12 +705,38 @@ def _clean_answer(text: str) -> str:
     return out.strip()
 
 
-def _merge_sources(primary: list[dict[str, str]], secondary: list[dict[str, str]]) -> list[dict[str, str]]:
+def _tag_sources(sources: list[dict[str, Any]], source_type: Literal["knowledge", "web"]) -> list[dict[str, Any]]:
+    return [{**item, "source_type": item.get("source_type") or source_type} for item in sources]
+
+
+def _source_type_for(item: dict[str, Any]) -> Literal["knowledge", "web"]:
+    source_type = item.get("source_type")
+    if source_type in {"knowledge", "web"}:
+        return cast(Literal["knowledge", "web"], source_type)
+    url = str(item.get("url", ""))
+    return "knowledge" if url.startswith("credon://knowledge/") else "web"
+
+
+def _source_payload(sources: list[dict[str, Any]]) -> list[dict[str, str]]:
+    return [
+        {"title": str(item.get("title", "")), "url": str(item.get("url", "")), "source_type": _source_type_for(item)}
+        for item in sources
+    ]
+
+
+def _source_models(sources: list[dict[str, Any]]) -> list[Source]:
+    return [
+        Source(title=str(item.get("title", "")), url=str(item.get("url", "")), source_type=_source_type_for(item))
+        for item in sources
+    ]
+
+
+def _merge_sources(primary: list[dict[str, Any]], secondary: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen: set[str] = set()
-    merged: list[dict[str, str]] = []
-    for item in primary + secondary:
-        url = item.get("url", "")
-        key = url or item.get("title", "")
+    merged: list[dict[str, Any]] = []
+    for item in _tag_sources(primary, "knowledge") + _tag_sources(secondary, "web"):
+        url = str(item.get("url", ""))
+        key = url or str(item.get("title", ""))
         if not key or key in seen:
             continue
         seen.add(key)
@@ -1203,7 +1229,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
                     answer=cached_answer,
                     language=target_language,
                     confidence=cast(Literal["high", "medium", "low"], cached.get("confidence", "medium")),
-                    sources=[Source(title=s.get("title", ""), url=s.get("url", "")) for s in cast(list[dict[str, str]], cached.get("sources", []))],
+                    sources=_source_models(cast(list[dict[str, Any]], cached.get("sources", []))),
                     images=[ImageResult(**img) for img in cast(list[dict[str, str]], cached.get("images", []))] if cached.get("images") else [],
                     suggestions=cast(list[str], cached.get("suggestions", [])),
                     thinking=str(cached.get("thinking", "")),
@@ -1434,7 +1460,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
 
     has_model = _has_available_model()
 
-    quick_knowledge = retrieve_knowledge_context(payload.user_id, working_query, top_k=3) if not _is_greeting(cleaned_query) else []
+    quick_knowledge = _tag_sources(retrieve_knowledge_context(payload.user_id, working_query, top_k=3), "knowledge") if not _is_greeting(cleaned_query) else []
     if quick_knowledge:
         quick_knowledge, _ = _evaluate_sources(cleaned_query, quick_knowledge, keep=3)
     quick_score, quick_reason, quick_diagnostics = _routing_score(
@@ -1457,7 +1483,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
                 answer=answer,
                 language=target_language,
                 confidence="high",
-                sources=[Source(title=item["title"], url=item["url"]) for item in quick_knowledge],
+                sources=_source_models(quick_knowledge),
                 images=[],
                 latency_ms=elapsed,
                 metadata={"routing": {"selected_route": "credon_answer", **quick_diagnostics}},
@@ -1477,11 +1503,11 @@ def chat(payload: ChatRequest) -> ChatResponse:
     )
     chosen_model = payload.model or _choose_internal_model(cleaned_query, use_web)
 
-    knowledge_results = retrieve_knowledge_context(payload.user_id, working_query, top_k=4 if payload.deep_think else 3) if retrieval_allowed else []
-    web_results = retrieve_sources(
+    knowledge_results = _tag_sources(retrieve_knowledge_context(payload.user_id, working_query, top_k=4 if payload.deep_think else 3), "knowledge") if retrieval_allowed else []
+    web_results = _tag_sources(retrieve_sources(
         working_query,
         max_results=_web_result_budget(cleaned_query, deep_think=payload.deep_think),
-    ) if use_web else []
+    ), "web") if use_web else []
     merged_results = _merge_sources(knowledge_results, web_results)
     results, eval_diag = _evaluate_sources(cleaned_query, merged_results)
 
@@ -1503,7 +1529,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
                 answer=answer,
                 language=target_language,
                 confidence=confidence,
-                sources=[Source(title=item["title"], url=item["url"]) for item in results],
+                sources=_source_models(results),
                 images=[],
                 latency_ms=elapsed,
                 metadata={
@@ -1548,7 +1574,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
             working_query, answer, results, thinking, chosen_model, confidence
         )
 
-    sources_payload = [{"title": item["title"], "url": item["url"]} for item in results]
+    sources_payload = _source_payload(results)
     route_meta = {
         "routing": {
             "selected_route": "model_generation",
@@ -1595,7 +1621,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
         answer=answer,
         language=target_language,
         confidence=confidence,  # type: ignore[arg-type]
-        sources=[Source(title=item["title"], url=item["url"]) for item in results],
+        sources=_source_models(results),
         images=images,
         suggestions=suggestions,
         thinking=thinking,
@@ -1885,7 +1911,7 @@ def chat_stream(payload: ChatRequest):
 
     has_model = _has_available_model()
 
-    quick_knowledge = retrieve_knowledge_context(payload.user_id, working_query, top_k=3) if not _is_greeting(cleaned_query) else []
+    quick_knowledge = _tag_sources(retrieve_knowledge_context(payload.user_id, working_query, top_k=3), "knowledge") if not _is_greeting(cleaned_query) else []
     if quick_knowledge:
         quick_knowledge, _ = _evaluate_sources(cleaned_query, quick_knowledge, keep=3)
     quick_score, quick_reason, quick_diagnostics = _routing_score(
@@ -1901,7 +1927,7 @@ def chat_stream(payload: ChatRequest):
         if brain_answer:
             thinking = credon_think(working_query, sources=quick_knowledge or None) if payload.deep_think else ""
             answer_text = _clean_answer(brain_answer)
-            source_payload = [{"title": s["title"], "url": s["url"]} for s in quick_knowledge]
+            source_payload = _source_payload(quick_knowledge)
             save_message(
                 payload.user_id, payload.session_id, "assistant", answer_text,
                 thinking=thinking, confidence="high",
@@ -1958,19 +1984,19 @@ def chat_stream(payload: ChatRequest):
 
     def _stream_events_inner():
         results = []
-        knowledge_results = retrieve_knowledge_context(payload.user_id, working_query, top_k=4 if payload.deep_think else 3) if retrieval_allowed else []
+        knowledge_results = _tag_sources(retrieve_knowledge_context(payload.user_id, working_query, top_k=4 if payload.deep_think else 3), "knowledge") if retrieval_allowed else []
         if use_web:
             yield f"data: {_json.dumps({'type': 'status', 'stage': 'searching', 'message': 'Searching knowledge sources...'})}\n\n"
-            web_results = retrieve_sources(
+            web_results = _tag_sources(retrieve_sources(
                 working_query,
                 max_results=_web_result_budget(cleaned_query, deep_think=payload.deep_think),
-            )
+            ), "web")
             merged_results = _merge_sources(knowledge_results, web_results)
             results, eval_diag = _evaluate_sources(cleaned_query, merged_results)
         else:
             results, eval_diag = _evaluate_sources(cleaned_query, knowledge_results)
 
-        sources_payload = [{"title": s["title"], "url": s["url"]} for s in results]
+        sources_payload = _source_payload(results)
 
         if len(results) >= 4:
             confidence = "high"
@@ -2130,7 +2156,11 @@ def get_user_transcript(user_id: str, session_id: str) -> ChatTranscriptResponse
                 if isinstance(source_item_obj, dict):
                     raw_sources.append(cast(dict[str, Any], source_item_obj))
         sources = [
-            Source(title=str(source_item.get("title", "")), url=str(source_item.get("url", "")))
+            Source(
+                title=str(source_item.get("title", "")),
+                url=str(source_item.get("url", "")),
+                source_type=_source_type_for(source_item),
+            )
             for source_item in raw_sources
             if "title" in source_item and "url" in source_item
         ]

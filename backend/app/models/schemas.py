@@ -21,6 +21,7 @@ class ChatRequest(BaseModel):
 class Source(BaseModel):
     title: str
     url: str
+    source_type: Literal["knowledge", "web"] = "web"
 
 
 class ImageResult(BaseModel):
