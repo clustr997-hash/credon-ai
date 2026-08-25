@@ -411,3 +411,48 @@ pre { border-radius: 14px !important; }
   /* Avoid the sidebar feeling like a permanent drawer. */
   aside { box-shadow: 12px 0 40px rgba(0,0,0,.18); }
 }
+
+
+/* ═══════════════════════════════════════════════════════════
+   CREDON 2026 PRODUCT SHELL — graphite / obsidian / indigo
+   The goal is calm, premium, information-dense UI rather than
+   a neon AI demo aesthetic.
+   ═══════════════════════════════════════════════════════════ */
+:root {
+  --background: #0b0b0d;
+  --foreground: #f4f4f5;
+  --accent: #8b5cf6;
+  --accent-blue: #6366f1;
+}
+
+body {
+  background:
+    radial-gradient(900px 500px at 50% -20%, rgba(99,102,241,.10), transparent 62%),
+    radial-gradient(700px 500px at 100% 100%, rgba(139,92,246,.06), transparent 65%),
+    #0b0b0d;
+  color: #f4f4f5;
+}
+
+.ambient-grid::before { opacity: .28; background-image:
+  linear-gradient(rgba(139,92,246,.035) 1px, transparent 1px),
+  linear-gradient(90deg, rgba(139,92,246,.035) 1px, transparent 1px);
+}
+
+.neo-glass {
+  background: linear-gradient(145deg, rgba(24,24,27,.92), rgba(12,12,14,.94));
+  border-color: rgba(255,255,255,.08) !important;
+  box-shadow: 0 24px 80px rgba(0,0,0,.45);
+}
+
+.sidebar-item:hover { transform: none; }
+.message-bubble { animation-duration: .18s; }
+.suggestion-chip:hover { transform: translateY(-1px); box-shadow: 0 12px 30px rgba(0,0,0,.25); }
+
+/* Make text, borders and surfaces feel closer to modern research/coding tools. */
+textarea, input, select { font-variant-numeric: tabular-nums; }
+pre { border-radius: 14px !important; }
+
+@media (min-width: 768px) {
+  /* Avoid the sidebar feeling like a permanent drawer. */
+  aside { box-shadow: 12px 0 40px rgba(0,0,0,.18); }
+}
