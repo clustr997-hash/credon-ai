@@ -1,0 +1,17 @@
+{
+  "name": "Credon AI",
+  "short_name": "Credon",
+  "description": "Agentic AI workspace — research, reason, build.",
+  "start_url": "/app",
+  "display": "standalone",
+  "background_color": "#0b0b0d",
+  "theme_color": "#0b0b0d",
+  "icons": [
+    {
+      "src": "/credon-logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from dataclasses import dataclass
 from typing import Any, Generator, cast
 import math
@@ -17,29 +18,83 @@ import requests
 
 # ── Available model registry ─────────────────────────────────────
 
+CLOUD_PROVIDERS = {"groq", "openrouter", "gemini", "deepseek"}
+
+
 @dataclass
 class ModelInfo:
     id: str
     label: str
-    provider: str          # "ollama" | "deepseek" | "groq"
+    provider: str          # internal: "ollama" | "groq" | "openrouter" | "gemini" | "deepseek"
     description: str
     default: bool = False
 
 
-# Populated at startup; enriched by /models endpoint
-_STATIC_MODELS: list[ModelInfo] = [
-    ModelInfo("qwen3:8b", "Qwen 3 8B", "ollama", "Fast, balanced reasoning", default=True),
-    ModelInfo("qwen3:4b", "Qwen 3 4B", "ollama", "Lightweight and quick"),
-    ModelInfo("deepseek-r1:1.5b", "DeepSeek R1 1.5B", "ollama", "Compact local reasoning model"),
-    ModelInfo("deepseek-r1:8b", "DeepSeek R1 8B", "ollama", "Deep reasoning model"),
-    ModelInfo("deepseek-reasoner", "DeepSeek R1 (Cloud)", "deepseek", "DeepSeek cloud reasoning model"),
-    ModelInfo("deepseek-chat", "DeepSeek Chat (Cloud)", "deepseek", "DeepSeek cloud chat model"),
-    ModelInfo("groq:llama-3.3-70b-versatile", "Groq Llama 3.3 70B", "groq", "Groq cloud fallback model"),
-    ModelInfo("groq:deepseek-r1-distill-llama-70b", "Groq DeepSeek R1 Distill 70B", "groq", "Groq reasoning fallback model"),
-    ModelInfo("llama3.2:3b", "Llama 3.2 3B", "ollama", "Meta's compact model"),
-    ModelInfo("gemma3:4b", "Gemma 3 4B", "ollama", "Google's efficient model"),
-    ModelInfo("phi4-mini:3.8b", "Phi-4 Mini", "ollama", "Microsoft reasoning model"),
+# ── Credon model family (user-facing) ───────────────────────────
+# Each brand id maps to a free-tier endpoint internally. The UI only
+# ever sees the Credon name — provider routing stays server-side.
+BRAND_MODELS: dict[str, dict[str, str]] = {
+    "credon-alpha": {
+        "provider": "groq",
+        "api_model": "llama-3.3-70b-versatile",
+        "label": "Credon Alpha",
+        "description": "Fast, capable — the everyday default",
+    },
+    "credon-alpha-reasoning": {
+        "provider": "groq",
+        "api_model": "openai/gpt-oss-120b",
+        "label": "Credon Alpha Reasoning",
+        "description": "Thinks step by step — math, logic, code",
+    },
+    "credon-alpha-flash": {
+        "provider": "groq",
+        "api_model": "openai/gpt-oss-20b",
+        "label": "Credon Alpha Flash",
+        "description": "Quickest replies for simple tasks",
+    },
+    "credon-deep": {
+        "provider": "openrouter",
+        "api_model": "deepseek/deepseek-r1:free",
+        "label": "Credon Deep",
+        "description": "Extended reasoning for hard research",
+    },
+    "credon-scout": {
+        "provider": "gemini",
+        "api_model": "gemini-2.5-flash",
+        "label": "Credon Scout",
+        "description": "Multimodal — reads images and dense documents",
+    },
+}
+
+_BRAND_CHAIN = [
+    "credon-alpha",
+    "credon-alpha-reasoning",
+    "credon-alpha-flash",
+    "credon-deep",
+    "credon-scout",
 ]
+
+
+def _brand_entry(model: str) -> dict[str, str] | None:
+    return BRAND_MODELS.get(model)
+
+
+def _static_models_from_brands() -> list[ModelInfo]:
+    models: list[ModelInfo] = []
+    for brand_id, entry in BRAND_MODELS.items():
+        models.append(
+            ModelInfo(
+                brand_id,
+                entry["label"],
+                entry["provider"],
+                entry["description"],
+                default=brand_id == "credon-alpha",
+            )
+        )
+    return models
+
+
+_STATIC_MODELS: list[ModelInfo] = _static_models_from_brands()
 
 
 def _ollama_url() -> str:
@@ -62,6 +117,52 @@ def _groq_api_key() -> str:
     return os.getenv("GROQ_API_KEY", "").strip()
 
 
+def _openrouter_url() -> str:
+    return os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
+
+
+def _openrouter_api_key() -> str:
+    return os.getenv("OPENROUTER_API_KEY", "").strip()
+
+
+def _gemini_url() -> str:
+    return os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai").rstrip("/")
+
+
+def _gemini_api_key() -> str:
+    return os.getenv("GEMINI_API_KEY", "").strip()
+
+
+def _provider_credentials(provider: str) -> tuple[str, str]:
+    """Return (api_key, base_url) for a cloud provider.
+    Mesh lanes (nvidia/cerebras/mistral/zai) resolve through the registry."""
+    from . import mesh
+
+    if provider in {"nvidia", "cerebras", "mistral", "zai"}:
+        api_key, base_url, _ = mesh.lane_credentials(provider)
+        return api_key, base_url
+    if provider == "deepseek":
+        return _deepseek_api_key(), _deepseek_url()
+    if provider == "groq":
+        return _groq_api_key(), _groq_url()
+    if provider == "openrouter":
+        return _openrouter_api_key(), _openrouter_url()
+    if provider == "gemini":
+        return _gemini_api_key(), _gemini_url()
+    return "", ""
+
+
+def _provider_headers(provider: str, api_key: str) -> dict[str, str]:
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    if provider == "openrouter":
+        headers["HTTP-Referer"] = "https://credon-ai.local"
+        headers["X-Title"] = "Credon AI"
+    return headers
+
+
 def _runtime_mode() -> str:
     """Runtime mode: auto | cloud | local."""
     mode = os.getenv("MODEL_RUNTIME_MODE", "auto").strip().lower()
@@ -77,19 +178,43 @@ def _groq_default_model() -> str:
     return model if model.startswith("groq:") else f"groq:{model}"
 
 
+def _openrouter_default_model() -> str:
+    model = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free").strip()
+    return model if model.startswith("or:") else f"or:{model}"
+
+
+def _gemini_default_model() -> str:
+    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+    return model if model.startswith("gem:") else f"gem:{model}"
+
+
 def _cloud_api_model(model: str) -> str:
-    if model.startswith("groq:"):
+    if model.startswith("mesh:"):
+        return model.split("/", 1)[1] if "/" in model[5:] else model[5:]
+    brand = _brand_entry(model)
+    if brand:
+        return brand["api_model"]
+    if ":" in model and model.split(":", 1)[0] in {"groq", "or", "gem"}:
         return model.split(":", 1)[1]
     return model
 
 
 def _cloud_provider_for_model(model: str) -> str | None:
+    if model.startswith("mesh:"):
+        return model[5:].split("/", 1)[0]
+    brand = _brand_entry(model)
+    if brand:
+        return brand["provider"]
     if model.startswith("groq:"):
         return "groq"
+    if model.startswith("or:"):
+        return "openrouter"
+    if model.startswith("gem:"):
+        return "gemini"
     if model.startswith("deepseek"):
         return "deepseek"
     for item in _STATIC_MODELS:
-        if item.id == model and item.provider in {"deepseek", "groq"}:
+        if item.id == model and item.provider in CLOUD_PROVIDERS:
             return item.provider
     return None
 
@@ -99,82 +224,44 @@ def _is_cloud_model(model: str) -> bool:
 
 
 def list_available_models() -> list[dict[str, Any]]:
-    """Return models actually available on the local Ollama instance,
-    intersected with our known registry (+ any extras detected)."""
-    static_ids = {m.id for m in _STATIC_MODELS}
+    """Return the Credon model family with availability flags.
+
+    Provider names never leave this module — the API only exposes
+    the Credon-branded family.
+    """
     available: list[dict[str, Any]] = []
-
-    # Ask Ollama for running models
-    try:
-        resp = requests.get(f"{_ollama_url()}/api/tags", timeout=5)
-        resp.raise_for_status()
-        payload = cast(dict[str, Any], resp.json())
-        remote_list = cast(list[Any], payload.get("models", []))
-        remote_models: set[str] = set()
-        for item in remote_list:
-            if not isinstance(item, dict):
-                continue
-            entry = cast(dict[str, Any], item)
-            model_name = entry.get("name")
-            if isinstance(model_name, str) and model_name:
-                remote_models.add(model_name)
-    except Exception:
-        remote_models = set()
-
     for m in _STATIC_MODELS:
-        if m.provider in {"deepseek", "groq"}:
-            provider_available = bool(_deepseek_api_key()) if m.provider == "deepseek" else bool(_groq_api_key())
-            available.append({
-                "id": m.id,
-                "label": m.label,
-                "provider": "cloud",
-                "description": m.description,
-                "default": m.default,
-                "available": provider_available,
-            })
-            continue
+        provider = _cloud_provider_for_model(m.id)
+        api_key, _ = _provider_credentials(provider) if provider else ("", "")
         available.append({
             "id": m.id,
             "label": m.label,
-            "provider": m.provider,
+            "provider": "credon",
             "description": m.description,
             "default": m.default,
-            "available": m.id in remote_models,
+            "available": bool(api_key),
         })
-
-    # Add any Ollama-local models not in our registry
-    for name in sorted(remote_models - static_ids):
-        available.append({
-            "id": name,
-            "label": name,
-            "provider": "ollama",
-            "description": "Detected on local Ollama",
-            "default": False,
-            "available": True,
-        })
-
     return available
 
 
 def default_model() -> str:
+    """Best default: the Credon brand model whose provider has a key,
+    in family priority order."""
+    for brand_id in _BRAND_CHAIN:
+        entry = BRAND_MODELS[brand_id]
+        api_key, _ = _provider_credentials(entry["provider"])
+        if api_key:
+            return brand_id
+
     mode = _runtime_mode()
-    env = os.getenv("OLLAMA_MODEL")
-    if mode != "cloud" and env:
-        return env
-
-    if mode in {"auto", "cloud"}:
-        if _deepseek_api_key():
-            return _deepseek_default_model()
-        if _groq_api_key():
-            return _groq_default_model()
-
-    if mode == "cloud":
-        return _deepseek_default_model()
-
+    if mode != "cloud":
+        env = os.getenv("OLLAMA_MODEL")
+        if env:
+            return env
     for m in _STATIC_MODELS:
-        if m.default and m.provider == "ollama":
+        if m.default:
             return m.id
-    return _STATIC_MODELS[0].id if _STATIC_MODELS else "qwen3:8b"
+    return next((m.id for m in _STATIC_MODELS), "credon-alpha")
 
 
 # ── Generation helpers ───────────────────────────────────────────
@@ -184,7 +271,6 @@ _cache_time: float = 0
 
 
 def _refresh_ollama_cache() -> set[str]:
-    import time
     global _available_models_cache, _cache_time
     now = time.time()
     if now - _cache_time <= 60 and _available_models_cache:
@@ -440,6 +526,13 @@ def generate_sync(
 
 
 def _cloud_retry_candidates(chosen: str) -> list[str]:
+    """Score-ordered failover across the Credon Unlimited Mesh.
+
+    The chosen brand model goes first; remaining lanes are ordered by the
+    mesh routing score (headroom, speed, capability, cooldown health).
+    """
+    from . import mesh
+
     ordered: list[str] = []
 
     def _add(model_id: str | None) -> None:
@@ -447,16 +540,29 @@ def _cloud_retry_candidates(chosen: str) -> list[str]:
         if not mid or mid in ordered:
             return
         provider = _cloud_provider_for_model(mid)
-        if provider == "deepseek" and _deepseek_api_key():
-            ordered.append(mid)
-        elif provider == "groq" and _groq_api_key():
+        if not provider or provider not in CLOUD_PROVIDERS or provider == "deepseek":
+            return
+        api_key, _ = _provider_credentials(provider)
+        if api_key:
             ordered.append(mid)
 
     _add(chosen)
-    _add(_deepseek_default_model())
-    _add("deepseek-chat")
-    _add(_groq_default_model())
-    _add("groq:deepseek-r1-distill-llama-70b")
+
+    # Mesh-scored lanes → synthetic brand ids resolved per lane.
+    try:
+        for candidate in mesh.route(task="chat", tokens_needed=1500)[:6]:
+            lane = candidate["lane"]
+            model = candidate["model"]
+            synthetic = f"mesh:{lane}/{model}"
+            if synthetic not in ordered:
+                ordered.append(synthetic)
+    except Exception:
+        pass
+
+    # Brand-family fallbacks (registry-driven lanes already cover these
+    # providers, but keep explicit order for registry-less setups).
+    for brand_id in _BRAND_CHAIN:
+        _add(brand_id)
     return ordered
 
 
@@ -466,21 +572,22 @@ def cloud_retry_candidates(chosen: str) -> list[str]:
 
 
 def _generate_cloud_sync(messages: list[dict[str, str]], model: str) -> str:
+    from . import mesh
+
     provider = _cloud_provider_for_model(model)
     if not provider:
         return ""
-    api_key = _deepseek_api_key() if provider == "deepseek" else _groq_api_key()
-    base_url = _deepseek_url() if provider == "deepseek" else _groq_url()
+    api_key, base_url = _provider_credentials(provider)
     if not api_key:
         return ""
 
+    payload_text = " ".join(m.get("content", "") for m in messages)
+    tokens = mesh.estimate_tokens(payload_text)
+    started = time.time()
     try:
         resp = requests.post(
             f"{base_url.rstrip('/')}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
+            headers=_provider_headers(provider, api_key),
             json={
                 "model": _cloud_api_model(model),
                 "messages": messages,
@@ -488,14 +595,27 @@ def _generate_cloud_sync(messages: list[dict[str, str]], model: str) -> str:
             },
             timeout=35,
         )
+        if resp.status_code in (429, 500, 502, 503):
+            mesh.report_cooldown(provider, resp.status_code)
+            return ""
         resp.raise_for_status()
         data = resp.json()
-        return (
+        text = (
             data.get("choices", [{}])[0]
             .get("message", {})
             .get("content", "")
             .strip()
         )
+        if text:
+            mesh.record_usage(provider, tokens)
+            mesh.report_success(provider, (time.time() - started) * 1000)
+        return text
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else 0
+        if status in (429, 500, 502, 503):
+            mesh.report_cooldown(provider, status)
+        print(f"[Credon] Cloud model error ({provider}:{model}): {exc}")
+        return ""
     except Exception as exc:
         print(f"[Credon] Cloud model error ({provider}:{model}): {exc}")
         return ""
@@ -509,22 +629,24 @@ def generate_cloud_sync(messages: list[dict[str, str]], model: str) -> str:
 def _generate_cloud_stream(
     messages: list[dict[str, str]], model: str
 ) -> Generator[str, None, None]:
-    """Stream tokens from cloud API (DeepSeek/Groq)."""
+    """Stream tokens from any OpenAI-compatible cloud provider (mesh-aware)."""
+    from . import mesh
+
     provider = _cloud_provider_for_model(model)
     if not provider:
         return
-    api_key = _deepseek_api_key() if provider == "deepseek" else _groq_api_key()
-    base_url = _deepseek_url() if provider == "deepseek" else _groq_url()
+    api_key, base_url = _provider_credentials(provider)
     if not api_key:
         return
+    payload_text = " ".join(m.get("content", "") for m in messages)
+    tokens = mesh.estimate_tokens(payload_text)
+    started = time.time()
+    first_token_at = 0.0
     try:
         import json as _json
         resp = requests.post(
             f"{base_url.rstrip('/')}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
+            headers=_provider_headers(provider, api_key),
             json={
                 "model": _cloud_api_model(model),
                 "messages": messages,
@@ -533,7 +655,11 @@ def _generate_cloud_stream(
             stream=True,
             timeout=30,
         )
+        if resp.status_code in (429, 500, 502, 503):
+            mesh.report_cooldown(provider, resp.status_code)
+            return
         resp.raise_for_status()
+        emitted = False
         for line in resp.iter_lines():
             if not line:
                 continue
@@ -542,15 +668,22 @@ def _generate_cloud_stream(
                 continue
             payload_str = decoded[6:].strip()
             if payload_str == "[DONE]":
-                return
+                break
             try:
                 chunk = _json.loads(payload_str)
                 delta = chunk.get("choices", [{}])[0].get("delta", {})
                 token = delta.get("content", "")
                 if token:
+                    if not emitted:
+                        first_token_at = time.time()
+                        mesh.report_success(provider, (first_token_at - started) * 1000)
+                        mesh.record_usage(provider, tokens)
+                    emitted = True
                     yield token
             except _json.JSONDecodeError:
                 continue
+        if not emitted:
+            mesh.report_cooldown(provider, 0)
     except Exception as exc:
         print(f"[Credon] Cloud stream error ({provider}:{model}): {exc}")
 

@@ -13,6 +13,9 @@ import requests
 from app.routes.chat import router as chat_router
 from app.routes.ingest import router as ingest_router
 from app.routes.generate import router as generate_router
+from app.routes.agent import router as agent_router
+from app.routes.platform import router as platform_router, run_due_jobs
+from app.routes.selfevolve import router as selfevolve_router
 from app.services.knowledge_store import list_user_knowledge_snippets, postgres_health
 from app.services.chat_store import firestore_health
 from app.services.models import generate_sync
@@ -56,6 +59,9 @@ app.add_middleware(
 app.include_router(chat_router, prefix="/api/v1", tags=["Chat"])
 app.include_router(ingest_router, prefix="/api/v1", tags=["Ingest"])
 app.include_router(generate_router, prefix="/api/v1", tags=["Generate"])
+app.include_router(agent_router, prefix="/api/v1", tags=["Agent"])
+app.include_router(platform_router, prefix="/api/v1", tags=["Platform"])
+app.include_router(selfevolve_router, prefix="/api/v1", tags=["Self-evolution"])
 
 
 @app.get("/", include_in_schema=False)
@@ -66,24 +72,39 @@ def root():
 
 @app.get("/health", tags=["System"])
 def health() -> dict[str, str]:
-    """Health check endpoint."""
+    """Health check endpoint. Also opportunistically runs due scheduled jobs."""
+    try:
+        run_due_jobs()
+    except Exception:
+        pass
     return {"status": "ok"}
+
+
+@app.get("/health/mesh", tags=["System"])
+def health_mesh() -> dict[str, object]:
+    """Live Credon Unlimited Mesh status — lanes, cooldowns, token windows."""
+    from app.services.mesh import mesh_status
+
+    return mesh_status()
 
 
 def _safe_bool_env(name: str) -> bool:
     return bool(os.getenv(name, "").strip())
 
 
-def _provider_check_deepseek() -> dict[str, object]:
-    api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
-    base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/")
+def _provider_check_openai_compatible(
+    name: str, key_env: str, default_base: str
+) -> dict[str, object]:
+    """Generic /models readiness probe for OpenAI-compatible providers."""
+    api_key = os.getenv(key_env, "").strip()
+    base_url = os.getenv(f"{key_env.rsplit('_API_KEY', 1)[0]}_BASE_URL", default_base).rstrip("/")
     if not api_key:
         return {"configured": False, "ok": False, "error": "missing_api_key"}
     try:
         resp = requests.get(
             f"{base_url}/models",
             headers={"Authorization": f"Bearer {api_key}"},
-            timeout=4,
+            timeout=6,
         )
         return {
             "configured": True,
@@ -93,27 +114,22 @@ def _provider_check_deepseek() -> dict[str, object]:
         }
     except Exception as exc:
         return {"configured": True, "ok": False, "error": str(exc)}
+
+
+def _provider_check_deepseek() -> dict[str, object]:
+    return _provider_check_openai_compatible("deepseek", "DEEPSEEK_API_KEY", "https://api.deepseek.com")
 
 
 def _provider_check_groq() -> dict[str, object]:
-    api_key = os.getenv("GROQ_API_KEY", "").strip()
-    base_url = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
-    if not api_key:
-        return {"configured": False, "ok": False, "error": "missing_api_key"}
-    try:
-        resp = requests.get(
-            f"{base_url}/models",
-            headers={"Authorization": f"Bearer {api_key}"},
-            timeout=4,
-        )
-        return {
-            "configured": True,
-            "ok": resp.ok,
-            "http_status": resp.status_code,
-            "error": "" if resp.ok else "provider_unreachable_or_auth_failed",
-        }
-    except Exception as exc:
-        return {"configured": True, "ok": False, "error": str(exc)}
+    return _provider_check_openai_compatible("groq", "GROQ_API_KEY", "https://api.groq.com/openai/v1")
+
+
+def _provider_check_openrouter() -> dict[str, object]:
+    return _provider_check_openai_compatible("openrouter", "OPENROUTER_API_KEY", "https://openrouter.ai/api/v1")
+
+
+def _provider_check_gemini() -> dict[str, object]:
+    return _provider_check_openai_compatible("gemini", "GEMINI_API_KEY", "https://generativelanguage.googleapis.com/v1beta/openai")
 
 
 def _provider_check_serper() -> dict[str, object]:
@@ -184,8 +200,10 @@ def _provider_check_ollama() -> dict[str, object]:
 def health_providers() -> dict[str, object]:
     """Live provider readiness checks for model and retrieval services."""
     checks = {
-        "deepseek": _provider_check_deepseek(),
         "groq": _provider_check_groq(),
+        "openrouter": _provider_check_openrouter(),
+        "gemini": _provider_check_gemini(),
+        "deepseek": _provider_check_deepseek(),
         "serper": _provider_check_serper(),
         "langsearch": _provider_check_langsearch(),
         "ollama": _provider_check_ollama(),
@@ -200,8 +218,10 @@ def health_providers() -> dict[str, object]:
             "use_model_generation": os.getenv("USE_MODEL_GENERATION", "true").lower() == "true",
             "use_web_search": os.getenv("USE_WEB_SEARCH", "true").lower() == "true",
             "keys_present": {
-                "DEEPSEEK_API_KEY": _safe_bool_env("DEEPSEEK_API_KEY"),
                 "GROQ_API_KEY": _safe_bool_env("GROQ_API_KEY"),
+                "OPENROUTER_API_KEY": _safe_bool_env("OPENROUTER_API_KEY"),
+                "GEMINI_API_KEY": _safe_bool_env("GEMINI_API_KEY"),
+                "DEEPSEEK_API_KEY": _safe_bool_env("DEEPSEEK_API_KEY"),
                 "SERPER_API_KEY": _safe_bool_env("SERPER_API_KEY"),
                 "LANGSEARCH_API_KEY": _safe_bool_env("LANGSEARCH_API_KEY"),
             },

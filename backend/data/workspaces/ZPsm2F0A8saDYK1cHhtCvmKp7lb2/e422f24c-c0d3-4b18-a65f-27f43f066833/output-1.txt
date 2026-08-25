@@ -1,0 +1,12 @@
+=== Expense Tracker Demo ===
+Added expenses with IDs: 1, 2
+
+Current expenses:
+ID 1: 2026-08-25 - Groceries ($45.67) [Food]
+ID 2: 2026-08-25 - Bus ticket ($2.5) [Transport]
+
+Updated expense ID 1
+
+Updated expenses:
+ID 1: 2026-08-25 - Weekly groceries ($42.33) [Food]
+ID 2: 2026-08-25 - Bus ticket ($2.5) [Transport]

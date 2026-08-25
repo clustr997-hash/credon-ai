@@ -10,8 +10,11 @@
   },
   "dependencies": {
     "firebase": "^12.10.0",
+    "jspdf": "^4.2.1",
     "katex": "^0.16.33",
     "next": "16.1.6",
+    "pdfjs-dist": "^4.10.38",
+    "pptxgenjs": "^4.0.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-markdown": "^10.1.0",

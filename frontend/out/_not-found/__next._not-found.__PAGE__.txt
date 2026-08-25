@@ -1,0 +1,7 @@
+1:"$Sreact.fragment"
+2:I[88760,["/_next/static/chunks/60c995ad1056a644.js"],"CredonMark"]
+3:I[22016,["/_next/static/chunks/60c995ad1056a644.js"],""]
+4:I[97367,["/_next/static/chunks/ff1a16fafef87110.js","/_next/static/chunks/0bd6498bda341889.js"],"OutletBoundary"]
+5:"$Sreact.suspense"
+0:{"buildId":"HMBRYCo1fPNFiVs8VJl64","rsc":["$","$1","c",{"children":[["$","div",null,{"className":"flex min-h-dvh flex-col items-center justify-center bg-[#FAF9F6] px-6 text-center","children":[["$","$L2",null,{"size":48,"animate":true}],["$","h1",null,{"className":"mt-8 font-display text-5xl tracking-tight text-stone-900","children":"Lost in thought."}],["$","p",null,{"className":"mt-3 max-w-sm text-[15px] text-stone-500","children":"This page doesn't exist — but your next answer does."}],["$","div",null,{"className":"mt-8 flex gap-3","children":[["$","$L3",null,{"href":"/","className":"rounded-xl bg-stone-900 px-5 py-2.5 text-[14px] font-medium text-white transition-all hover:-translate-y-px","children":"Back home"}],["$","$L3",null,{"href":"/app","className":"rounded-xl border border-stone-900/10 bg-white px-5 py-2.5 text-[14px] font-medium text-stone-800 transition-all hover:-translate-y-px","children":"Open Credon"}]]}]]}],[["$","script","script-0",{"src":"/_next/static/chunks/60c995ad1056a644.js","async":true}]],["$","$L4",null,{"children":["$","$5",null,{"name":"Next.MetadataOutlet","children":"$@6"}]}]]}],"loading":null,"isPartial":false}
+6:null
