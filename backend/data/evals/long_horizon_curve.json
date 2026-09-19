@@ -1,0 +1,42 @@
+[
+ {
+  "goal": "Hi",
+  "kind": "1-step",
+  "plan_steps": 5,
+  "success": true,
+  "surprise": 0.466,
+  "latency_s": 12.76
+ },
+ {
+  "goal": "What is transformer architecture?",
+  "kind": "question",
+  "plan_steps": 5,
+  "success": true,
+  "surprise": 0.476,
+  "latency_s": 13.87
+ },
+ {
+  "goal": "Write a Python function to reverse a string",
+  "kind": "code",
+  "plan_steps": 5,
+  "success": true,
+  "surprise": 0.659,
+  "latency_s": 6.72
+ },
+ {
+  "goal": "Prepare my project for tomorrow presentation",
+  "kind": "long-horizon",
+  "plan_steps": 5,
+  "success": false,
+  "surprise": 0.95,
+  "latency_s": 5.35
+ },
+ {
+  "goal": "Prepare my project for tomorrow presentation with slides and demo and tests",
+  "kind": "long-horizon+",
+  "plan_steps": 5,
+  "success": false,
+  "surprise": 0.815,
+  "latency_s": 6.63
+ }
+]

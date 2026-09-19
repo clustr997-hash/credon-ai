@@ -16,16 +16,18 @@ from app.routes.generate import router as generate_router
 from app.routes.agent import router as agent_router
 from app.routes.platform import router as platform_router, run_due_jobs
 from app.routes.selfevolve import router as selfevolve_router
+from app.cognitive.router import router as cognitive_router
 from app.services.knowledge_store import list_user_knowledge_snippets, postgres_health
 from app.services.chat_store import firestore_health
 from app.services.models import generate_sync
 from app.services.retrieval_v2 import retrieve_sources
+from app.services.continuous_learning import start_background_learning
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 app = FastAPI(
     title="Credon AI API",
-    version="0.1.0",
+    version="3.0.0",
     description=(
         "Credon AI — Intelligent Research Assistant API.\n\n"
         "Provides chat (streaming + sync), knowledge ingestion, "
@@ -62,6 +64,15 @@ app.include_router(generate_router, prefix="/api/v1", tags=["Generate"])
 app.include_router(agent_router, prefix="/api/v1", tags=["Agent"])
 app.include_router(platform_router, prefix="/api/v1", tags=["Platform"])
 app.include_router(selfevolve_router, prefix="/api/v1", tags=["Self-evolution"])
+app.include_router(cognitive_router, prefix="/api/v1", tags=["Cognitive"])  # PCL v0.1
+
+
+@app.on_event("startup")
+def _start_alpha_learning() -> None:
+    try:
+        start_background_learning()
+    except Exception as exc:
+        print(f"[Credon] learning loop failed to start: {exc}")
 
 
 @app.get("/", include_in_schema=False)
@@ -130,6 +141,27 @@ def _provider_check_openrouter() -> dict[str, object]:
 
 def _provider_check_gemini() -> dict[str, object]:
     return _provider_check_openai_compatible("gemini", "GEMINI_API_KEY", "https://generativelanguage.googleapis.com/v1beta/openai")
+
+
+def _provider_check_cerebras() -> dict[str, object]:
+    api_key = os.getenv("CEREBRAS_API_KEY", "").strip()
+    base_url = os.getenv("CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1").rstrip("/")
+    if not api_key:
+        return {"configured": False, "ok": False, "error": "missing_api_key"}
+    try:
+        resp = requests.get(
+            f"{base_url}/models",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=4,
+        )
+        return {
+            "configured": True,
+            "ok": resp.ok,
+            "http_status": resp.status_code,
+            "error": "" if resp.ok else "provider_unreachable_or_auth_failed",
+        }
+    except Exception as exc:
+        return {"configured": True, "ok": False, "error": str(exc)}
 
 
 def _provider_check_serper() -> dict[str, object]:
@@ -204,6 +236,7 @@ def health_providers() -> dict[str, object]:
         "openrouter": _provider_check_openrouter(),
         "gemini": _provider_check_gemini(),
         "deepseek": _provider_check_deepseek(),
+        "cerebras": _provider_check_cerebras(),
         "serper": _provider_check_serper(),
         "langsearch": _provider_check_langsearch(),
         "ollama": _provider_check_ollama(),
@@ -222,6 +255,7 @@ def health_providers() -> dict[str, object]:
                 "OPENROUTER_API_KEY": _safe_bool_env("OPENROUTER_API_KEY"),
                 "GEMINI_API_KEY": _safe_bool_env("GEMINI_API_KEY"),
                 "DEEPSEEK_API_KEY": _safe_bool_env("DEEPSEEK_API_KEY"),
+                "CEREBRAS_API_KEY": _safe_bool_env("CEREBRAS_API_KEY"),
                 "SERPER_API_KEY": _safe_bool_env("SERPER_API_KEY"),
                 "LANGSEARCH_API_KEY": _safe_bool_env("LANGSEARCH_API_KEY"),
             },
@@ -301,7 +335,21 @@ def _wikipedia_trending_prompts() -> list[str]:
             low = title.lower()
             if not title or ":" in title or low.startswith("main page") or "deaths in" in low:
                 continue
-            prompt = f"What's the story behind {title} that's trending right now?"
+            # Quality gates: Latin-script only (blocks Cyrillic/Arabic/CJK),
+            # no list/index pages, no obituary/sports-roster noise.
+            if not all(ord(ch) < 0x250 for ch in title):
+                continue
+            if any(bad in low for bad in (
+                "list of", "index of", "timeline of", " in ", " (", ")",
+                "season", "episode", "vs ", "film", "movie", "tv series",
+                "singer", "song", "album", "filmography", "discography",
+                "death", "died", "murder", "attack", "leak",
+            )):
+                continue
+            words = title.split()
+            if not (2 <= len(words) <= 6):
+                continue
+            prompt = f"Explain {title} simply"
             if prompt not in prompts:
                 prompts.append(prompt)
             if len(prompts) >= 12:
@@ -323,6 +371,8 @@ def _trending_web_prompts() -> list[str]:
         "latest AI technology trends 2026 students developers business",
     ]
     prompts: list[str] = []
+    # Curated evergreen prompts first — always safe, always English.
+    prompts.extend(random.sample(_FALLBACK_TRENDING_PROMPTS, k=6))
     prompts.extend(_wikipedia_trending_prompts())
     for query in queries:
         try:

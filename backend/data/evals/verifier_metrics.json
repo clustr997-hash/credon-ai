@@ -1,0 +1,7 @@
+{
+ "good_surprise": 0.541,
+ "bad_surprise": 1.0,
+ "good_conf": "medium",
+ "bad_conf": "low",
+ "separation": 0.459
+}
